@@ -1,5 +1,6 @@
 
-import { COLORS, useCanvas } from '../context/CanvasContext';
+import { useCanvas } from '../context/CanvasContext';
+import { COLORS } from '@/types/canvas';
 import { useState, useEffect } from 'react';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

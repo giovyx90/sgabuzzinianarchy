@@ -1,6 +1,7 @@
 
 import { useRef, useEffect, useState } from 'react';
-import { useCanvas, CANVAS_SIZE } from '../context/CanvasContext';
+import { useCanvas } from '../context/CanvasContext';
+import { CANVAS_SIZE } from '@/types/canvas';
 import { toast } from '@/components/ui/use-toast';
 
 const Canvas = () => {

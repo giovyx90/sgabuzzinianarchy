@@ -1,49 +1,13 @@
 
 import { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-
-// Define the canvas size and initial pixel size
-export const CANVAS_SIZE = 500; // 500x500 pixels
-const DEFAULT_PIXEL_SIZE = 3; // Ridotto per supportare una griglia più grande
-const DEFAULT_COLOR = '#FFFFFF';
-
-// Define colors for the palette
-const COLORS = [
-  '#FF4136', // Rosso
-  '#FF851B', // Arancione
-  '#FFDC00', // Giallo
-  '#7FDB6A', // Lime
-  '#2ECC40', // Verde
-  '#39CCCC', // Teal
-  '#0074D9', // Blu
-  '#001F3F', // Navy
-  '#B10DC9', // Viola
-  '#F012BE', // Magenta
-];
-
-// Define a type for pixel data
-interface PixelData {
-  x: number;
-  y: number;
-  color: string;
-  placed_by?: string | null;
-  placed_at?: string | null;
-}
-
-interface CanvasContextType {
-  canvas: string[][];
-  selectedColor: string;
-  pixelSize: number;
-  cooldown: number;
-  canPlace: boolean;
-  nickname: string;
-  setNickname: (name: string) => void;
-  setPixel: (x: number, y: number) => void;
-  setSelectedColor: (color: string) => void;
-  setPixelSize: (size: number) => void;
-  resetCooldown: () => void;
-  getPixelInfo: (x: number, y: number) => Promise<PixelData | null>;
-}
+import { 
+  CANVAS_SIZE, DEFAULT_COLOR, DEFAULT_PIXEL_SIZE, COLORS,
+  CanvasContextType, PixelData 
+} from '@/types/canvas';
+import { 
+  fetchAllPixels, getPixelInfo as fetchPixelInfo, 
+  placePixel, subscribeToPixelUpdates 
+} from '@/utils/canvasOperations';
 
 const defaultCanvas = Array(CANVAS_SIZE)
   .fill(null)
@@ -61,19 +25,12 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
 
   // Carica i pixel dal database all'avvio
   useEffect(() => {
-    const fetchPixels = async () => {
-      const { data, error } = await supabase
-        .from('pixels')
-        .select('*');
+    const loadInitialPixels = async () => {
+      const pixels = await fetchAllPixels();
       
-      if (error) {
-        console.error('Errore nel caricamento dei pixel:', error);
-        return;
-      }
-      
-      if (data && data.length > 0) {
+      if (pixels && pixels.length > 0) {
         const newCanvas = [...defaultCanvas];
-        data.forEach((pixel: PixelData) => {
+        pixels.forEach((pixel: PixelData) => {
           if (pixel.x >= 0 && pixel.x < CANVAS_SIZE && pixel.y >= 0 && pixel.y < CANVAS_SIZE) {
             newCanvas[pixel.y][pixel.x] = pixel.color;
           }
@@ -82,51 +39,25 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       }
     };
     
-    fetchPixels();
+    loadInitialPixels();
     
     // Sottoscrizione per aggiornamenti in tempo reale
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'pixels'
-        },
-        (payload) => {
-          const newPixel = payload.new as PixelData;
-          if (newPixel && newPixel.x >= 0 && newPixel.x < CANVAS_SIZE && newPixel.y >= 0 && newPixel.y < CANVAS_SIZE) {
-            setCanvas(prevCanvas => {
-              const newCanvas = [...prevCanvas];
-              newCanvas[newPixel.y][newPixel.x] = newPixel.color;
-              return newCanvas;
-            });
-          }
-        }
-      )
-      .subscribe();
+    const channel = subscribeToPixelUpdates((newPixel) => {
+      setCanvas(prevCanvas => {
+        const newCanvas = [...prevCanvas];
+        newCanvas[newPixel.y][newPixel.x] = newPixel.color;
+        return newCanvas;
+      });
+    });
       
     return () => {
       supabase.removeChannel(channel);
     };
   }, []);
 
-  // Ottieni informazioni su un pixel specifico
+  // Gestore delle informazioni sui pixel
   const getPixelInfo = async (x: number, y: number): Promise<PixelData | null> => {
-    const { data, error } = await supabase
-      .from('pixels')
-      .select('*')
-      .eq('x', x)
-      .eq('y', y)
-      .single();
-      
-    if (error && error.code !== 'PGRST116') { // PGRST116 è "no rows returned"
-      console.error('Errore nel recupero delle informazioni del pixel:', error);
-      return null;
-    }
-    
-    return data as PixelData | null;
+    return await fetchPixelInfo(x, y);
   };
 
   // Start the cooldown timer
@@ -143,30 +74,19 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
 
   // Function to place a pixel
   const setPixel = useCallback(async (x: number, y: number) => {
-    if (canPlace && x >= 0 && x < CANVAS_SIZE && y >= 0 && y < CANVAS_SIZE) {
-      // Aggiorna il database
-      const { error } = await supabase
-        .from('pixels')
-        .upsert({
-          x,
-          y,
-          color: selectedColor,
-          placed_by: nickname || null,
+    if (canPlace) {
+      const success = await placePixel(x, y, selectedColor, nickname || null);
+      
+      if (success) {
+        // Aggiorna lo stato locale
+        setCanvas((prevCanvas) => {
+          const newCanvas = prevCanvas.map((row) => [...row]);
+          newCanvas[y][x] = selectedColor;
+          return newCanvas;
         });
         
-      if (error) {
-        console.error('Errore nel posizionamento del pixel:', error);
-        return;
+        resetCooldown();
       }
-      
-      // Aggiorna lo stato locale
-      setCanvas((prevCanvas) => {
-        const newCanvas = prevCanvas.map((row) => [...row]);
-        newCanvas[y][x] = selectedColor;
-        return newCanvas;
-      });
-      
-      resetCooldown();
     }
   }, [canPlace, selectedColor, nickname]);
 
@@ -207,5 +127,8 @@ export function useCanvas() {
   return context;
 }
 
-// Export colors for use in other components
-export { COLORS };
+// Fix missing import
+import { supabase } from '@/integrations/supabase/client';
+
+// Export constants for use in other components
+export { COLORS, CANVAS_SIZE };

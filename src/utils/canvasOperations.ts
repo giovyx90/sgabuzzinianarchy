@@ -1,44 +1,42 @@
 
-import { supabase } from '@/integrations/supabase/client';
 import { PixelData, CANVAS_SIZE } from '@/types/canvas';
 
-// Simple cache with reduced TTL
+// Cache con TTL ridotto
 const pixelCache = new Map<string, PixelData>();
-const CACHE_TTL = 10000; // 10 secondi - reduced from 30
+const CACHE_TTL = 5000; // 5 secondi
 
-// Simplified pixel fetching
+// Chiave per localStorage
+const CANVAS_STORAGE_KEY = 'pixel-canvas-data';
+
+// Carica i pixel dal localStorage
 export const fetchAllPixels = async () => {
   try {
-    const { data, error } = await supabase
-      .from('pixels')
-      .select('*')
-      .limit(2000);
+    // Recupera i dati da localStorage
+    const storedData = localStorage.getItem(CANVAS_STORAGE_KEY);
+    let pixelData: PixelData[] = [];
     
-    if (error) {
-      console.error('Errore nel caricamento dei pixel:', error);
-      return null;
+    if (storedData) {
+      pixelData = JSON.parse(storedData);
     }
     
-    // Update cache
-    if (data) {
-      const now = Date.now();
-      data.forEach((pixel: PixelData) => {
-        const key = `${pixel.x}-${pixel.y}`;
-        pixelCache.set(key, {
-          ...pixel,
-          timestamp: now,
-        });
+    // Aggiorna la cache
+    const now = Date.now();
+    pixelData.forEach((pixel: PixelData) => {
+      const key = `${pixel.x}-${pixel.y}`;
+      pixelCache.set(key, {
+        ...pixel,
+        timestamp: now,
       });
-    }
+    });
     
-    return data as PixelData[];
+    return pixelData;
   } catch (e) {
-    console.error('Errore imprevisto durante il caricamento dei pixel:', e);
-    return null;
+    console.error('Errore nel caricamento dei pixel:', e);
+    return [];
   }
 };
 
-// Simplified pixel info retrieval
+// Ottieni info di un pixel
 export const getPixelInfo = async (x: number, y: number): Promise<PixelData | null> => {
   try {
     const cacheKey = `${x}-${y}`;
@@ -48,23 +46,21 @@ export const getPixelInfo = async (x: number, y: number): Promise<PixelData | nu
       return cachedPixel;
     }
     
-    const { data, error } = await supabase
-      .from('pixels')
-      .select('*')
-      .eq('x', x)
-      .eq('y', y)
-      .single();
-      
-    if (error && error.code !== 'PGRST116') {
-      return null;
-    }
+    // Cerca nei dati salvati localmente
+    const storedData = localStorage.getItem(CANVAS_STORAGE_KEY);
+    let pixelData: PixelData[] = [];
     
-    if (data) {
-      pixelCache.set(cacheKey, {
-        ...data,
-        timestamp: Date.now(),
-      });
-      return data as PixelData;
+    if (storedData) {
+      pixelData = JSON.parse(storedData);
+      const pixel = pixelData.find(p => p.x === x && p.y === y);
+      
+      if (pixel) {
+        pixelCache.set(cacheKey, {
+          ...pixel,
+          timestamp: Date.now(),
+        });
+        return pixel;
+      }
     }
     
     return null;
@@ -73,7 +69,7 @@ export const getPixelInfo = async (x: number, y: number): Promise<PixelData | nu
   }
 };
 
-// Simplified pixel placement
+// Posiziona un pixel
 export const placePixel = async (x: number, y: number, color: string, nickname: string | null) => {
   if (x < 0 || x >= CANVAS_SIZE || y < 0 || y >= CANVAS_SIZE) {
     return false;
@@ -84,23 +80,36 @@ export const placePixel = async (x: number, y: number, color: string, nickname: 
       x,
       y,
       color,
-      placed_by: nickname || null,
+      placed_by: nickname || 'Anonimo',
       placed_at: new Date().toISOString()
     };
     
-    // Update cache immediately for faster UI feedback
+    // Aggiorna la cache
     const cacheKey = `${x}-${y}`;
     pixelCache.set(cacheKey, {
       ...pixelData,
       timestamp: Date.now(),
     });
     
-    const { error } = await supabase
-      .from('pixels')
-      .upsert(pixelData, { onConflict: 'x,y' });
-      
-    if (error) {
-      return false;
+    // Carica i dati esistenti
+    const storedData = localStorage.getItem(CANVAS_STORAGE_KEY);
+    let existingPixels: PixelData[] = [];
+    
+    if (storedData) {
+      existingPixels = JSON.parse(storedData);
+      // Rimuovi il pixel esistente nella stessa posizione (se presente)
+      existingPixels = existingPixels.filter(p => !(p.x === x && p.y === y));
+    }
+    
+    // Aggiungi il nuovo pixel
+    existingPixels.push(pixelData);
+    
+    // Salva nel localStorage
+    localStorage.setItem(CANVAS_STORAGE_KEY, JSON.stringify(existingPixels));
+    
+    // Notifica gli ascoltatori
+    if (pixelUpdateListeners.length > 0) {
+      pixelUpdateListeners.forEach(listener => listener(pixelData));
     }
     
     return true;
@@ -109,36 +118,20 @@ export const placePixel = async (x: number, y: number, color: string, nickname: 
   }
 };
 
-// Simplified subscription
+// Lista di ascoltatori per gli aggiornamenti dei pixel
+const pixelUpdateListeners: ((pixel: PixelData) => void)[] = [];
+
+// Sottoscrizione agli aggiornamenti dei pixel
 export const subscribeToPixelUpdates = (onPixelUpdate: (pixel: PixelData) => void) => {
-  const channel = supabase
-    .channel('schema-db-changes')
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'pixels'
-      },
-      (payload) => {
-        const newPixel = payload.new as PixelData;
-        if (newPixel && typeof newPixel.x === 'number' && typeof newPixel.y === 'number' &&
-            newPixel.x >= 0 && newPixel.x < CANVAS_SIZE && 
-            newPixel.y >= 0 && newPixel.y < CANVAS_SIZE) {
-          
-          // Update cache
-          const cacheKey = `${newPixel.x}-${newPixel.y}`;
-          pixelCache.set(cacheKey, {
-            ...newPixel,
-            timestamp: Date.now(),
-          });
-          
-          // Immediate callback
-          onPixelUpdate(newPixel);
-        }
+  pixelUpdateListeners.push(onPixelUpdate);
+  
+  // Restituisci una funzione per annullare la sottoscrizione
+  return {
+    unsubscribe: () => {
+      const index = pixelUpdateListeners.indexOf(onPixelUpdate);
+      if (index !== -1) {
+        pixelUpdateListeners.splice(index, 1);
       }
-    )
-    .subscribe();
-    
-  return channel;
+    }
+  };
 };

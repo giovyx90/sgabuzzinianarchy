@@ -8,10 +8,9 @@ import {
   fetchAllPixels, getPixelInfo as fetchPixelInfo, 
   placePixel, subscribeToPixelUpdates 
 } from '@/utils/canvasOperations';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 
-// Simplified empty canvas function
+// Funzione per creare una canvas vuota
 const createEmptyCanvas = () => {
   const canvas = new Array(CANVAS_SIZE);
   for (let i = 0; i < CANVAS_SIZE; i++) {
@@ -31,13 +30,13 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
   const [nickname, setNickname] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Define resetCooldown before it's used
+  // Funzione per resettare il cooldown
   const resetCooldown = useCallback(() => {
     setCooldown(5);
     setCanPlace(false);
   }, []);
 
-  // Simplified pixel info retrieval
+  // Recupera le informazioni di un pixel
   const getPixelInfo = useCallback(async (x: number, y: number): Promise<PixelData | null> => {
     const colorInCanvas = canvas[y]?.[x];
     if (!colorInCanvas || colorInCanvas === DEFAULT_COLOR) {
@@ -47,7 +46,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     return await fetchPixelInfo(x, y);
   }, [canvas]);
 
-  // Simplified initial loading
+  // Carica i pixel inizialmente
   useEffect(() => {
     let isMounted = true;
     
@@ -80,10 +79,10 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     
     loadPixels();
     
-    // Subscribe to updates
-    const channel = subscribeToPixelUpdates((newPixel) => {
+    // Sottoscrizione agli aggiornamenti
+    const subscription = subscribeToPixelUpdates((newPixel) => {
       if (isMounted && typeof newPixel.x === 'number' && typeof newPixel.y === 'number') {
-        // Direct update for simplicity and speed
+        // Aggiornamento diretto
         setCanvas(prev => {
           const newCanvas = [...prev];
           newCanvas[newPixel.y] = [...newCanvas[newPixel.y]];
@@ -95,11 +94,11 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       
     return () => {
       isMounted = false;
-      supabase.removeChannel(channel);
+      subscription.unsubscribe();
     };
   }, []);
 
-  // Simplified pixel placement
+  // Posiziona un pixel
   const setPixel = useCallback(async (x: number, y: number) => {
     if (!canPlace) {
       toast({
@@ -110,7 +109,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       return;
     }
     
-    // Immediate UI update
+    // Aggiornamento UI immediato
     setCanvas((prevCanvas) => {
       const newCanvas = [...prevCanvas];
       newCanvas[y] = [...newCanvas[y]];
@@ -118,10 +117,10 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       return newCanvas;
     });
     
-    // Start cooldown
+    // Avvia cooldown
     resetCooldown();
     
-    // Send to server in background
+    // Invia in background
     try {
       await placePixel(x, y, selectedColor, nickname || null);
     } catch (error) {
@@ -134,7 +133,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     }
   }, [canPlace, selectedColor, nickname, resetCooldown]);
 
-  // Cooldown effect
+  // Effetto per il cooldown
   useEffect(() => {
     if (cooldown > 0) {
       const timer = setTimeout(() => {
@@ -146,7 +145,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     }
   }, [cooldown, canPlace]);
 
-  // Context value
+  // Valore del contesto
   const contextValue = useMemo(() => ({
     canvas,
     selectedColor,

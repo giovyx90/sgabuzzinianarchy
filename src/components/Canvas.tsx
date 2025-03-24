@@ -1,5 +1,5 @@
 
-import { useRef, useEffect, useState, useCallback, memo, useMemo } from 'react';
+import { useRef, useEffect, useState, useCallback, memo } from 'react';
 import { useCanvas } from '../context/CanvasContext';
 import { CANVAS_SIZE } from '@/types/canvas';
 import { toast } from '@/components/ui/use-toast';
@@ -14,39 +14,26 @@ const Canvas = () => {
   const lastMousePos = useRef({ x: 0, y: 0 });
   const [hoveredPixel, setHoveredPixel] = useState<{ x: number, y: number, info: any } | null>(null);
   const requestIdRef = useRef<number | null>(null);
-  const debounceTimerRef = useRef<number | null>(null);
 
-  // Debounced hover handler for better performance
+  // Simplified pixel hover handler
   const handlePixelHover = useCallback(async (x: number, y: number) => {
-    if (hoveredPixel && hoveredPixel.x === x && hoveredPixel.y === y) return;
-    
-    // Clear existing timer
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-    
-    // Set a debounce timer to prevent excessive API calls
-    debounceTimerRef.current = window.setTimeout(async () => {
-      try {
-        const info = await getPixelInfo(x, y);
-        if (info && info.placed_by) {
-          setHoveredPixel({ x, y, info });
-        } else {
-          setHoveredPixel(null);
-        }
-      } catch (error) {
-        console.error("Errore nel recuperare info sul pixel:", error);
+    try {
+      const info = await getPixelInfo(x, y);
+      if (info && info.placed_by) {
+        setHoveredPixel({ x, y, info });
+      } else {
+        setHoveredPixel(null);
       }
-    }, 100); // 100ms debounce
-  }, [getPixelInfo, hoveredPixel]);
+    } catch (error) {
+      console.error("Errore nel recuperare info sul pixel:", error);
+    }
+  }, [getPixelInfo]);
 
   // Optimized pixel click handler
   const handlePixelClick = useCallback((x: number, y: number) => {
     if (canPlace) {
-      // Only call setPixel if we can actually place a pixel
       setPixel(x, y);
     } else {
-      // Avoid showing toast if already displayed recently
       toast({
         title: "Cooldown attivo",
         description: "Devi aspettare prima di posizionare un altro pixel",
@@ -55,9 +42,9 @@ const Canvas = () => {
     }
   }, [canPlace, setPixel]);
 
-  // More efficient mouse handling with requestAnimationFrame
+  // Simplified mouse handling
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button === 0) { // Left mouse button
+    if (e.button === 0) {
       lastMousePos.current = { x: e.clientX, y: e.clientY };
       setIsDragging(true);
     }
@@ -65,20 +52,11 @@ const Canvas = () => {
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (isDragging) {
-      // Cancel any existing animation frame
-      if (requestIdRef.current) {
-        cancelAnimationFrame(requestIdRef.current);
-      }
+      const dx = e.clientX - lastMousePos.current.x;
+      const dy = e.clientY - lastMousePos.current.y;
+      lastMousePos.current = { x: e.clientX, y: e.clientY };
       
-      // Schedule a new animation frame
-      requestIdRef.current = requestAnimationFrame(() => {
-        const dx = e.clientX - lastMousePos.current.x;
-        const dy = e.clientY - lastMousePos.current.y;
-        lastMousePos.current = { x: e.clientX, y: e.clientY };
-        
-        setPosition(prev => ({ x: prev.x + dx, y: prev.y + dy }));
-        requestIdRef.current = null;
-      });
+      setPosition(prev => ({ x: prev.x + dx, y: prev.y + dy }));
     }
   }, [isDragging]);
 
@@ -86,18 +64,14 @@ const Canvas = () => {
     setIsDragging(false);
   }, []);
 
-  // High-performance zoom handler
+  // Simplified zoom handler
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
-    
-    // Schedule zoom update in the next animation frame for better performance
-    requestAnimationFrame(() => {
-      const delta = e.deltaY < 0 ? 0.1 : -0.1;
-      setZoom(z => Math.max(0.5, Math.min(3, z + delta)));
-    });
+    const delta = e.deltaY < 0 ? 0.1 : -0.1;
+    setZoom(z => Math.max(0.5, Math.min(3, z + delta)));
   }, []);
 
-  // Clean up event listeners and timers
+  // Clean up event listeners
   useEffect(() => {
     document.addEventListener('mouseup', handleMouseUp);
     return () => {
@@ -106,55 +80,45 @@ const Canvas = () => {
       if (requestIdRef.current) {
         cancelAnimationFrame(requestIdRef.current);
       }
-      
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
     };
   }, [handleMouseUp]);
 
-  // Optimized initial centering
+  // Initial centering
   useEffect(() => {
     if (canvasRef.current) {
       const container = canvasRef.current.parentElement;
       if (container) {
-        // Use requestAnimationFrame for smoother initial positioning
-        requestAnimationFrame(() => {
-          setPosition({
-            x: (container.clientWidth - CANVAS_SIZE * pixelSize) / 2,
-            y: (container.clientHeight - CANVAS_SIZE * pixelSize) / 2
-          });
+        setPosition({
+          x: (container.clientWidth - CANVAS_SIZE * pixelSize) / 2,
+          y: (container.clientHeight - CANVAS_SIZE * pixelSize) / 2
         });
       }
     }
   }, [pixelSize]);
 
-  // Reset zoom and position with efficient animation
+  // Reset view
   const resetZoomAndPosition = useCallback(() => {
     if (canvasRef.current) {
       const container = canvasRef.current.parentElement;
       if (container) {
-        // Animate the reset with requestAnimationFrame for smoother transition
-        requestAnimationFrame(() => {
-          setPosition({
-            x: (container.clientWidth - CANVAS_SIZE * pixelSize) / 2,
-            y: (container.clientHeight - CANVAS_SIZE * pixelSize) / 2
-          });
-          setZoom(1);
+        setPosition({
+          x: (container.clientWidth - CANVAS_SIZE * pixelSize) / 2,
+          y: (container.clientHeight - CANVAS_SIZE * pixelSize) / 2
         });
+        setZoom(1);
       }
     }
   }, [pixelSize]);
 
-  // Highly optimized pixel grid rendering
-  const pixelGrid = useMemo(() => {
-    const gridItems = [];
+  // Direct render of pixels (no useMemo to reduce memory usage)
+  const renderPixels = () => {
+    const pixels = [];
     
     for (let y = 0; y < canvas.length; y++) {
       for (let x = 0; x < canvas[y].length; x++) {
         const color = canvas[y][x];
         
-        gridItems.push(
+        pixels.push(
           <div
             key={`${x}-${y}`}
             className="pixel relative"
@@ -178,8 +142,8 @@ const Canvas = () => {
       }
     }
     
-    return gridItems;
-  }, [canvas, pixelSize, canPlace, handlePixelClick, handlePixelHover]);
+    return pixels;
+  };
 
   return (
     <TooltipProvider>
@@ -189,18 +153,17 @@ const Canvas = () => {
       >
         <div 
           ref={canvasRef}
-          className="absolute cursor-grab will-change-transform"
+          className="absolute cursor-grab"
           style={{ 
             transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
             transformOrigin: 'center',
             cursor: isDragging ? 'grabbing' : 'grab',
-            transition: 'transform 100ms ease-out'
           }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
         >
           <div 
-            className="grid gap-[1px] bg-muted p-1 rounded-md shadow-md animate-fade-in"
+            className="grid gap-[1px] bg-muted p-1 rounded-md shadow-md"
             style={{
               gridTemplateColumns: `repeat(${CANVAS_SIZE}, ${pixelSize}px)`,
               gridTemplateRows: `repeat(${CANVAS_SIZE}, ${pixelSize}px)`,
@@ -208,11 +171,11 @@ const Canvas = () => {
               height: `${CANVAS_SIZE * pixelSize + CANVAS_SIZE + 2}px`,
             }}
           >
-            {pixelGrid}
+            {renderPixels()}
           </div>
         </div>
         
-        {/* Popup al hover sui pixel - ottimizzato per performance */}
+        {/* Simplified popup */}
         {hoveredPixel && (
           <Tooltip open={true}>
             <TooltipTrigger asChild>
@@ -226,33 +189,31 @@ const Canvas = () => {
                 top: `${hoveredPixel.y * pixelSize * zoom + position.y - 40}px`,
               }}
             >
-              <p><strong>Coordinate:</strong> {hoveredPixel.info.x}, {hoveredPixel.info.y}</p>
-              {hoveredPixel.info.placed_by && <p><strong>Autore:</strong> {hoveredPixel.info.placed_by}</p>}
+              <p><strong>Autore:</strong> {hoveredPixel.info.placed_by}</p>
               <p><strong>Posizionato:</strong> {new Date(hoveredPixel.info.placed_at).toLocaleString('it-IT')}</p>
             </TooltipContent>
           </Tooltip>
         )}
         
-        {/* Controlli zoom - ridotti per migliorare performance */}
-        <div className="absolute bottom-4 right-4 glass-panel p-2 rounded-full flex items-center space-x-2 z-10 animate-fade-in">
+        {/* Simplified controls */}
+        <div className="absolute bottom-4 right-4 bg-white bg-opacity-70 p-2 rounded-full flex items-center space-x-2 z-10">
           <button 
-            className="w-8 h-8 bg-white bg-opacity-80 rounded-full flex items-center justify-center shadow-sm hover:bg-opacity-100 transition-all"
+            className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm"
             onClick={() => setZoom(z => Math.min(3, z + 0.1))}
           >
             <span className="text-xl font-bold">+</span>
           </button>
           <div className="text-sm font-medium">{Math.round(zoom * 100)}%</div>
           <button 
-            className="w-8 h-8 bg-white bg-opacity-80 rounded-full flex items-center justify-center shadow-sm hover:bg-opacity-100 transition-all"
+            className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm"
             onClick={() => setZoom(z => Math.max(0.5, z - 0.1))}
           >
             <span className="text-xl font-bold">-</span>
           </button>
         </div>
         
-        {/* Pulsante centratura */}
         <button 
-          className="absolute bottom-4 left-4 glass-panel p-2 rounded-full flex items-center justify-center z-10 animate-fade-in hover:bg-opacity-80 transition-all"
+          className="absolute bottom-4 left-4 bg-white bg-opacity-70 p-2 rounded-full flex items-center justify-center z-10"
           onClick={resetZoomAndPosition}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

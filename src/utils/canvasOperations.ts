@@ -2,11 +2,11 @@
 import { supabase } from '@/integrations/supabase/client';
 import { PixelData, CANVAS_SIZE } from '@/types/canvas';
 
-// Improved cache with debounced cache cleanup
+// Simple cache with reduced TTL
 const pixelCache = new Map<string, PixelData>();
-const CACHE_TTL = 30000; // 30 secondi
+const CACHE_TTL = 10000; // 10 secondi - reduced from 30
 
-// More efficient pixel fetching with batching
+// Simplified pixel fetching
 export const fetchAllPixels = async () => {
   try {
     const { data, error } = await supabase
@@ -19,14 +19,14 @@ export const fetchAllPixels = async () => {
       return null;
     }
     
-    // Update cache more efficiently
+    // Update cache
     if (data) {
       const now = Date.now();
       data.forEach((pixel: PixelData) => {
         const key = `${pixel.x}-${pixel.y}`;
         pixelCache.set(key, {
           ...pixel,
-          timestamp: now, // Use the same timestamp for batch updates
+          timestamp: now,
         });
       });
     }
@@ -38,10 +38,9 @@ export const fetchAllPixels = async () => {
   }
 };
 
-// Optimized pixel info retrieval
+// Simplified pixel info retrieval
 export const getPixelInfo = async (x: number, y: number): Promise<PixelData | null> => {
   try {
-    // Check cache first with early return
     const cacheKey = `${x}-${y}`;
     const cachedPixel = pixelCache.get(cacheKey);
     
@@ -49,7 +48,6 @@ export const getPixelInfo = async (x: number, y: number): Promise<PixelData | nu
       return cachedPixel;
     }
     
-    // If not in cache or expired, fetch from database
     const { data, error } = await supabase
       .from('pixels')
       .select('*')
@@ -58,11 +56,9 @@ export const getPixelInfo = async (x: number, y: number): Promise<PixelData | nu
       .single();
       
     if (error && error.code !== 'PGRST116') {
-      console.error('Errore nel recupero delle informazioni del pixel:', error);
       return null;
     }
     
-    // Update cache
     if (data) {
       pixelCache.set(cacheKey, {
         ...data,
@@ -73,20 +69,17 @@ export const getPixelInfo = async (x: number, y: number): Promise<PixelData | nu
     
     return null;
   } catch (e) {
-    console.error('Errore imprevisto durante il recupero del pixel:', e);
     return null;
   }
 };
 
-// Optimized pixel placement with local cache update
+// Simplified pixel placement
 export const placePixel = async (x: number, y: number, color: string, nickname: string | null) => {
-  // Early validation to reduce unnecessary processing
   if (x < 0 || x >= CANVAS_SIZE || y < 0 || y >= CANVAS_SIZE) {
     return false;
   }
   
   try {
-    // Create the pixel data object
     const pixelData = {
       x,
       y,
@@ -95,69 +88,29 @@ export const placePixel = async (x: number, y: number, color: string, nickname: 
       placed_at: new Date().toISOString()
     };
     
-    // Update local cache immediately for faster UI feedback
+    // Update cache immediately for faster UI feedback
     const cacheKey = `${x}-${y}`;
     pixelCache.set(cacheKey, {
       ...pixelData,
       timestamp: Date.now(),
     });
     
-    // Optimize database operation
     const { error } = await supabase
       .from('pixels')
       .upsert(pixelData, { onConflict: 'x,y' });
       
     if (error) {
-      console.error('Errore nel posizionamento del pixel:', error);
       return false;
     }
     
     return true;
   } catch (e) {
-    console.error('Errore imprevisto durante il posizionamento del pixel:', e);
     return false;
   }
 };
 
-// More efficient subscription management with prioritized user updates
+// Simplified subscription
 export const subscribeToPixelUpdates = (onPixelUpdate: (pixel: PixelData) => void) => {
-  // Use a queue to batch pixel updates for better performance
-  let updateQueue: PixelData[] = [];
-  let processingQueue = false;
-
-  // Process updates in batches with higher priority for recent updates
-  const processUpdateQueue = () => {
-    if (updateQueue.length === 0) {
-      processingQueue = false;
-      return;
-    }
-
-    processingQueue = true;
-    // Process current queue
-    const currentQueue = [...updateQueue];
-    updateQueue = [];
-    
-    // Update cache and trigger callbacks
-    currentQueue.forEach(newPixel => {
-      const cacheKey = `${newPixel.x}-${newPixel.y}`;
-      pixelCache.set(cacheKey, {
-        ...newPixel,
-        timestamp: Date.now(),
-      });
-      
-      // Immediately call the update callback for better responsiveness
-      onPixelUpdate(newPixel);
-    });
-    
-    // Check if there are new items in the queue
-    if (updateQueue.length > 0) {
-      requestAnimationFrame(processUpdateQueue);
-    } else {
-      processingQueue = false;
-    }
-  };
-
-  // Subscribe to changes with optimized processing
   const channel = supabase
     .channel('schema-db-changes')
     .on(
@@ -173,13 +126,15 @@ export const subscribeToPixelUpdates = (onPixelUpdate: (pixel: PixelData) => voi
             newPixel.x >= 0 && newPixel.x < CANVAS_SIZE && 
             newPixel.y >= 0 && newPixel.y < CANVAS_SIZE) {
           
-          // Add to queue instead of directly updating
-          updateQueue.push(newPixel);
+          // Update cache
+          const cacheKey = `${newPixel.x}-${newPixel.y}`;
+          pixelCache.set(cacheKey, {
+            ...newPixel,
+            timestamp: Date.now(),
+          });
           
-          // Start processing immediately for better responsiveness
-          if (!processingQueue) {
-            requestAnimationFrame(processUpdateQueue);
-          }
+          // Immediate callback
+          onPixelUpdate(newPixel);
         }
       }
     )

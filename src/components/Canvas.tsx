@@ -1,5 +1,5 @@
 
-import { useRef, useEffect, useState, useCallback, memo } from 'react';
+import { useRef, useEffect, useState, useCallback, memo, useMemo } from 'react';
 import { useCanvas } from '../context/CanvasContext';
 import { CANVAS_SIZE } from '@/types/canvas';
 import { toast } from '@/components/ui/use-toast';
@@ -13,13 +13,6 @@ const Canvas = () => {
   const lastMousePos = useRef({ x: 0, y: 0 });
   const [pixelInfo, setPixelInfo] = useState<any>(null);
   const [infoPosition, setInfoPosition] = useState({ x: 0, y: 0 });
-  const renderCount = useRef(0);
-
-  // Incrementiamo il contatore di rendering per debug
-  useEffect(() => {
-    renderCount.current += 1;
-    console.log(`Canvas renderizzato: ${renderCount.current} volte`);
-  });
 
   // Ottimizziamo la funzione di click sui pixel
   const handlePixelClick = useCallback(async (x: number, y: number) => {
@@ -84,29 +77,6 @@ const Canvas = () => {
     };
   }, [handleMouseUp]);
 
-  // Memoizziamo la griglia dei pixel per evitare rendering inutili
-  const renderPixelGrid = useCallback(() => {
-    return canvas.map((row, y) =>
-      row.map((color, x) => (
-        <div
-          key={`${x}-${y}`}
-          className="pixel relative"
-          style={{
-            backgroundColor: color,
-            width: `${pixelSize}px`,
-            height: `${pixelSize}px`,
-          }}
-          onClick={() => handlePixelClick(x, y)}
-        >
-          <div 
-            className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${canPlace ? 'opacity-0' : 'opacity-40'}`}
-            style={{ backgroundColor: "#000000" }}
-          />
-        </div>
-      ))
-    );
-  }, [canvas, pixelSize, canPlace, handlePixelClick]);
-
   // Centratura iniziale
   useEffect(() => {
     if (canvasRef.current) {
@@ -134,6 +104,29 @@ const Canvas = () => {
     }
   }, [pixelSize]);
 
+  // Memoizziamo la griglia dei pixel per evitare rendering inutili
+  const pixelGrid = useMemo(() => {
+    return canvas.map((row, y) =>
+      row.map((color, x) => (
+        <div
+          key={`${x}-${y}`}
+          className="pixel relative"
+          style={{
+            backgroundColor: color,
+            width: `${pixelSize}px`,
+            height: `${pixelSize}px`,
+          }}
+          onClick={() => handlePixelClick(x, y)}
+        >
+          <div 
+            className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${canPlace ? 'opacity-0' : 'opacity-40'}`}
+            style={{ backgroundColor: "#000000" }}
+          />
+        </div>
+      ))
+    );
+  }, [canvas, pixelSize, canPlace, handlePixelClick]);
+
   return (
     <div 
       className="relative overflow-hidden w-full h-full bg-secondary rounded-lg shadow-inner"
@@ -141,7 +134,7 @@ const Canvas = () => {
     >
       <div 
         ref={canvasRef}
-        className="absolute cursor-grab transition-transform duration-100 ease-out"
+        className="absolute cursor-grab transition-transform duration-100 ease-out will-change-transform"
         style={{ 
           transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
           transformOrigin: 'center',
@@ -158,7 +151,7 @@ const Canvas = () => {
             height: `${CANVAS_SIZE * pixelSize + CANVAS_SIZE}px`,
           }}
         >
-          {renderPixelGrid()}
+          {pixelGrid}
         </div>
       </div>
       

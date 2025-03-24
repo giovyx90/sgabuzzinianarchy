@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PixelData } from '@/types/canvas';
+import { supabase } from "@/integrations/supabase/client";
 
 type LeaderboardEntry = {
   name: string;
@@ -34,79 +34,82 @@ const Leaderboard = () => {
   const [activeTab, setActiveTab] = useState<TimeFrame>('all');
   const [isLoading, setIsLoading] = useState(true);
 
-  const calculateLeaderboard = useCallback(() => {
+  const calculateLeaderboard = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Get data from localStorage
-      const storedData = localStorage.getItem('pixel-canvas-data');
-      if (!storedData) {
-        setIsLoading(false);
-        return;
-      }
-
-      const pixelData: PixelData[] = JSON.parse(storedData);
-      
-      // Current date for time comparisons
+      // Get current date for time comparisons
       const now = new Date();
+      
+      // Calculate date limits for daily and weekly stats
       const oneDayAgo = new Date(now);
       oneDayAgo.setDate(now.getDate() - 1);
       
       const oneWeekAgo = new Date(now);
       oneWeekAgo.setDate(now.getDate() - 7);
       
-      // Calculate total (all time) leaderboard
-      const allTimeCounter: Record<string, { count: number, lastPlaced?: string }> = {};
-      const dailyCounter: Record<string, { count: number, lastPlaced?: string }> = {};
-      const weeklyCounter: Record<string, { count: number, lastPlaced?: string }> = {};
+      // Format dates for Supabase queries
+      const oneDayAgoStr = oneDayAgo.toISOString();
+      const oneWeekAgoStr = oneWeekAgo.toISOString();
       
-      // Process all pixels
-      pixelData.forEach(pixel => {
-        const username = pixel.placed_by || 'Anonimo';
-        const placedDate = new Date(pixel.placed_at || now);
+      // Fetch all time leaderboard
+      const { data: allTimeData, error: allTimeError } = await supabase
+        .from('pixels')
+        .select('placed_by, placed_at')
+        .order('placed_at', { ascending: false });
         
-        // All time stats
-        if (!allTimeCounter[username]) {
-          allTimeCounter[username] = { count: 0 };
-        }
-        allTimeCounter[username].count++;
-        allTimeCounter[username].lastPlaced = pixel.placed_at;
-
-        // Daily stats (last 24 hours)
-        if (placedDate >= oneDayAgo) {
-          if (!dailyCounter[username]) {
-            dailyCounter[username] = { count: 0 };
-          }
-          dailyCounter[username].count++;
-          dailyCounter[username].lastPlaced = pixel.placed_at;
-        }
+      if (allTimeError) {
+        console.error("Error fetching all-time leaderboard:", allTimeError);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Fetch daily leaderboard
+      const { data: dailyData, error: dailyError } = await supabase
+        .from('pixels')
+        .select('placed_by, placed_at')
+        .gte('placed_at', oneDayAgoStr)
+        .order('placed_at', { ascending: false });
         
-        // Weekly stats (last 7 days)
-        if (placedDate >= oneWeekAgo) {
-          if (!weeklyCounter[username]) {
-            weeklyCounter[username] = { count: 0 };
+      if (dailyError) {
+        console.error("Error fetching daily leaderboard:", dailyError);
+      }
+      
+      // Fetch weekly leaderboard
+      const { data: weeklyData, error: weeklyError } = await supabase
+        .from('pixels')
+        .select('placed_by, placed_at')
+        .gte('placed_at', oneWeekAgoStr)
+        .order('placed_at', { ascending: false });
+        
+      if (weeklyError) {
+        console.error("Error fetching weekly leaderboard:", weeklyError);
+      }
+      
+      // Process data and calculate counts
+      const processLeaderboardData = (data: any[]) => {
+        const counter: Record<string, { count: number, lastPlaced?: string }> = {};
+        
+        if (!data) return [];
+        
+        data.forEach(pixel => {
+          const username = pixel.placed_by || 'Anonimo';
+          
+          if (!counter[username]) {
+            counter[username] = { count: 0 };
           }
-          weeklyCounter[username].count++;
-          weeklyCounter[username].lastPlaced = pixel.placed_at;
-        }
-      });
-      
-      // Convert to arrays and sort by count (descending)
-      const allTimeLeaderboard = Object.entries(allTimeCounter).map(
-        ([name, data]) => ({ name, count: data.count, lastPlaced: data.lastPlaced })
-      ).sort((a, b) => b.count - a.count).slice(0, 10);
-      
-      const dailyLeaderboard = Object.entries(dailyCounter).map(
-        ([name, data]) => ({ name, count: data.count, lastPlaced: data.lastPlaced })
-      ).sort((a, b) => b.count - a.count).slice(0, 10);
-      
-      const weeklyLeaderboard = Object.entries(weeklyCounter).map(
-        ([name, data]) => ({ name, count: data.count, lastPlaced: data.lastPlaced })
-      ).sort((a, b) => b.count - a.count).slice(0, 10);
+          counter[username].count++;
+          counter[username].lastPlaced = pixel.placed_at;
+        });
+        
+        return Object.entries(counter).map(
+          ([name, data]) => ({ name, count: data.count, lastPlaced: data.lastPlaced })
+        ).sort((a, b) => b.count - a.count).slice(0, 10);
+      };
       
       setLeaderboard({
-        all: allTimeLeaderboard,
-        daily: dailyLeaderboard,
-        weekly: weeklyLeaderboard
+        all: processLeaderboardData(allTimeData || []),
+        daily: processLeaderboardData(dailyData || []),
+        weekly: processLeaderboardData(weeklyData || [])
       });
     } catch (error) {
       console.error("Error calculating leaderboard:", error);

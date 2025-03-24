@@ -1,6 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import AboutModal from './AboutModal';
+import Leaderboard from './Leaderboard';
 
 const Header = () => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -33,6 +34,7 @@ const Header = () => {
             Tela Collaborativa
           </span>
           
+          <Leaderboard />
           <AboutModal />
         </div>
       </div>

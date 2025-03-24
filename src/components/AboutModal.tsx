@@ -19,7 +19,7 @@ const AboutModal = () => {
         </DialogHeader>
         <div className="flex flex-col space-y-4">
           <div className="flex justify-center">
-            <img src="/logo.png" alt="SgabuzziniAnarchy Logo" className="w-32 h-32 object-contain" />
+            <img src="/lovable-uploads/73734ad6-5d27-4a83-be6f-2ee40ef7b519.png" alt="SgabuzziniAnarchy Logo" className="w-32 h-32 object-contain" />
           </div>
           <DialogDescription>
             <p className="mb-2">
@@ -38,7 +38,7 @@ const AboutModal = () => {
               Lasciatevi ispirare e divertitevi!
             </p>
             <p className="mt-4 font-medium">
-              Questo progetto è dedicato a tutti coloro che frequentano lo Sgabuzzini e vogliono lasciare un segno.
+              Questo progetto è dedicato a tutti coloro che frequentano Sgabuzzini e vogliono lasciare un segno.
             </p>
           </DialogDescription>
         </div>

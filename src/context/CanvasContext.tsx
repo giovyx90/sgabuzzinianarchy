@@ -21,6 +21,15 @@ const COLORS = [
   '#F012BE', // Magenta
 ];
 
+// Define a type for pixel data
+interface PixelData {
+  x: number;
+  y: number;
+  color: string;
+  placed_by?: string | null;
+  placed_at?: string | null;
+}
+
 interface CanvasContextType {
   canvas: string[][];
   selectedColor: string;
@@ -33,7 +42,7 @@ interface CanvasContextType {
   setSelectedColor: (color: string) => void;
   setPixelSize: (size: number) => void;
   resetCooldown: () => void;
-  getPixelInfo: (x: number, y: number) => Promise<any>;
+  getPixelInfo: (x: number, y: number) => Promise<PixelData | null>;
 }
 
 const defaultCanvas = Array(CANVAS_SIZE)
@@ -64,7 +73,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       
       if (data && data.length > 0) {
         const newCanvas = [...defaultCanvas];
-        data.forEach(pixel => {
+        data.forEach((pixel: PixelData) => {
           if (pixel.x >= 0 && pixel.x < CANVAS_SIZE && pixel.y >= 0 && pixel.y < CANVAS_SIZE) {
             newCanvas[pixel.y][pixel.x] = pixel.color;
           }
@@ -86,7 +95,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
           table: 'pixels'
         },
         (payload) => {
-          const { new: newPixel } = payload;
+          const newPixel = payload.new as PixelData;
           if (newPixel && newPixel.x >= 0 && newPixel.x < CANVAS_SIZE && newPixel.y >= 0 && newPixel.y < CANVAS_SIZE) {
             setCanvas(prevCanvas => {
               const newCanvas = [...prevCanvas];
@@ -104,7 +113,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Ottieni informazioni su un pixel specifico
-  const getPixelInfo = async (x: number, y: number) => {
+  const getPixelInfo = async (x: number, y: number): Promise<PixelData | null> => {
     const { data, error } = await supabase
       .from('pixels')
       .select('*')
@@ -117,7 +126,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       return null;
     }
     
-    return data;
+    return data as PixelData | null;
   };
 
   // Start the cooldown timer

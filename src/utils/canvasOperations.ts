@@ -1,17 +1,16 @@
 
 import { PixelData, CANVAS_SIZE } from '@/types/canvas';
 
-// Cache con TTL ridotto
+// Reduced TTL cache
 const pixelCache = new Map<string, PixelData>();
-const CACHE_TTL = 5000; // 5 secondi
+const CACHE_TTL = 2000; // 2 seconds
 
-// Chiave per localStorage
+// LocalStorage key
 const CANVAS_STORAGE_KEY = 'pixel-canvas-data';
 
-// Carica i pixel dal localStorage
+// Load pixels from localStorage
 export const fetchAllPixels = async () => {
   try {
-    // Recupera i dati da localStorage
     const storedData = localStorage.getItem(CANVAS_STORAGE_KEY);
     let pixelData: PixelData[] = [];
     
@@ -19,7 +18,7 @@ export const fetchAllPixels = async () => {
       pixelData = JSON.parse(storedData);
     }
     
-    // Aggiorna la cache
+    // Update cache
     const now = Date.now();
     pixelData.forEach((pixel: PixelData) => {
       const key = `${pixel.x}-${pixel.y}`;
@@ -31,27 +30,24 @@ export const fetchAllPixels = async () => {
     
     return pixelData;
   } catch (e) {
-    console.error('Errore nel caricamento dei pixel:', e);
     return [];
   }
 };
 
-// Ottieni info di un pixel
+// Get pixel info
 export const getPixelInfo = async (x: number, y: number): Promise<PixelData | null> => {
+  const cacheKey = `${x}-${y}`;
+  const cachedPixel = pixelCache.get(cacheKey);
+  
+  if (cachedPixel && cachedPixel.timestamp && Date.now() - cachedPixel.timestamp < CACHE_TTL) {
+    return cachedPixel;
+  }
+  
   try {
-    const cacheKey = `${x}-${y}`;
-    const cachedPixel = pixelCache.get(cacheKey);
-    
-    if (cachedPixel && cachedPixel.timestamp && Date.now() - cachedPixel.timestamp < CACHE_TTL) {
-      return cachedPixel;
-    }
-    
-    // Cerca nei dati salvati localmente
     const storedData = localStorage.getItem(CANVAS_STORAGE_KEY);
-    let pixelData: PixelData[] = [];
     
     if (storedData) {
-      pixelData = JSON.parse(storedData);
+      const pixelData: PixelData[] = JSON.parse(storedData);
       const pixel = pixelData.find(p => p.x === x && p.y === y);
       
       if (pixel) {
@@ -69,7 +65,7 @@ export const getPixelInfo = async (x: number, y: number): Promise<PixelData | nu
   }
 };
 
-// Posiziona un pixel
+// Place a pixel
 export const placePixel = async (x: number, y: number, color: string, nickname: string | null) => {
   if (x < 0 || x >= CANVAS_SIZE || y < 0 || y >= CANVAS_SIZE) {
     return false;
@@ -84,30 +80,32 @@ export const placePixel = async (x: number, y: number, color: string, nickname: 
       placed_at: new Date().toISOString()
     };
     
-    // Aggiorna la cache
+    // Update cache
     const cacheKey = `${x}-${y}`;
     pixelCache.set(cacheKey, {
       ...pixelData,
       timestamp: Date.now(),
     });
     
-    // Carica i dati esistenti
+    // Load existing data
     const storedData = localStorage.getItem(CANVAS_STORAGE_KEY);
     let existingPixels: PixelData[] = [];
     
     if (storedData) {
       existingPixels = JSON.parse(storedData);
-      // Rimuovi il pixel esistente nella stessa posizione (se presente)
+      // Remove existing pixel at the same position
       existingPixels = existingPixels.filter(p => !(p.x === x && p.y === y));
     }
     
-    // Aggiungi il nuovo pixel
+    // Add new pixel
     existingPixels.push(pixelData);
     
-    // Salva nel localStorage
-    localStorage.setItem(CANVAS_STORAGE_KEY, JSON.stringify(existingPixels));
+    // Save to localStorage without awaiting
+    setTimeout(() => {
+      localStorage.setItem(CANVAS_STORAGE_KEY, JSON.stringify(existingPixels));
+    }, 0);
     
-    // Notifica gli ascoltatori
+    // Notify listeners immediately
     if (pixelUpdateListeners.length > 0) {
       pixelUpdateListeners.forEach(listener => listener(pixelData));
     }
@@ -118,14 +116,13 @@ export const placePixel = async (x: number, y: number, color: string, nickname: 
   }
 };
 
-// Lista di ascoltatori per gli aggiornamenti dei pixel
+// Pixel update listeners
 const pixelUpdateListeners: ((pixel: PixelData) => void)[] = [];
 
-// Sottoscrizione agli aggiornamenti dei pixel
+// Subscribe to pixel updates
 export const subscribeToPixelUpdates = (onPixelUpdate: (pixel: PixelData) => void) => {
   pixelUpdateListeners.push(onPixelUpdate);
   
-  // Restituisci una funzione per annullare la sottoscrizione
   return {
     unsubscribe: () => {
       const index = pixelUpdateListeners.indexOf(onPixelUpdate);

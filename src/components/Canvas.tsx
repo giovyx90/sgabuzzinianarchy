@@ -2,7 +2,6 @@
 import { useRef, useEffect, useState, useCallback, memo } from 'react';
 import { useCanvas } from '../context/CanvasContext';
 import { CANVAS_SIZE } from '@/types/canvas';
-import { toast } from '@/components/ui/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const Canvas = () => {
@@ -13,36 +12,29 @@ const Canvas = () => {
   const [zoom, setZoom] = useState(1);
   const lastMousePos = useRef({ x: 0, y: 0 });
   const [hoveredPixel, setHoveredPixel] = useState<{ x: number, y: number, info: any } | null>(null);
-  const requestIdRef = useRef<number | null>(null);
 
-  // Simplified pixel hover handler
+  // Pixel hover handler
   const handlePixelHover = useCallback(async (x: number, y: number) => {
+    if (!canvas[y]?.[x] || canvas[y][x] === '#FFFFFF') return;
+    
     try {
       const info = await getPixelInfo(x, y);
       if (info && info.placed_by) {
         setHoveredPixel({ x, y, info });
-      } else {
-        setHoveredPixel(null);
       }
     } catch (error) {
-      console.error("Errore nel recuperare info sul pixel:", error);
+      console.error("Error getting pixel info:", error);
     }
-  }, [getPixelInfo]);
+  }, [getPixelInfo, canvas]);
 
-  // Optimized pixel click handler
+  // Pixel click handler
   const handlePixelClick = useCallback((x: number, y: number) => {
     if (canPlace) {
       setPixel(x, y);
-    } else {
-      toast({
-        title: "Cooldown attivo",
-        description: "Devi aspettare prima di posizionare un altro pixel",
-        variant: "default",
-      });
     }
   }, [canPlace, setPixel]);
 
-  // Simplified mouse handling
+  // Mouse handling
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 0) {
       lastMousePos.current = { x: e.clientX, y: e.clientY };
@@ -64,22 +56,18 @@ const Canvas = () => {
     setIsDragging(false);
   }, []);
 
-  // Simplified zoom handler
+  // Zoom handler
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY < 0 ? 0.1 : -0.1;
     setZoom(z => Math.max(0.5, Math.min(3, z + delta)));
   }, []);
 
-  // Clean up event listeners
+  // Event listeners
   useEffect(() => {
     document.addEventListener('mouseup', handleMouseUp);
     return () => {
       document.removeEventListener('mouseup', handleMouseUp);
-      
-      if (requestIdRef.current) {
-        cancelAnimationFrame(requestIdRef.current);
-      }
     };
   }, [handleMouseUp]);
 
@@ -110,7 +98,7 @@ const Canvas = () => {
     }
   }, [pixelSize]);
 
-  // Direct render of pixels (no useMemo to reduce memory usage)
+  // Direct render of pixels
   const renderPixels = () => {
     const pixels = [];
     
@@ -121,7 +109,6 @@ const Canvas = () => {
         pixels.push(
           <div
             key={`${x}-${y}`}
-            className="pixel relative"
             style={{
               backgroundColor: color,
               width: `${pixelSize}px`,
@@ -132,12 +119,7 @@ const Canvas = () => {
             onClick={() => handlePixelClick(x, y)}
             onMouseEnter={() => handlePixelHover(x, y)}
             onMouseLeave={() => setHoveredPixel(null)}
-          >
-            <div 
-              className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${canPlace ? 'opacity-0' : 'opacity-40'}`}
-              style={{ backgroundColor: "#000000" }}
-            />
-          </div>
+          />
         );
       }
     }
@@ -175,7 +157,6 @@ const Canvas = () => {
           </div>
         </div>
         
-        {/* Simplified popup */}
         {hoveredPixel && (
           <Tooltip open={true}>
             <TooltipTrigger asChild>
@@ -195,8 +176,8 @@ const Canvas = () => {
           </Tooltip>
         )}
         
-        {/* Simplified controls */}
-        <div className="absolute bottom-4 right-4 bg-white bg-opacity-70 p-2 rounded-full flex items-center space-x-2 z-10">
+        {/* Simple controls */}
+        <div className="absolute bottom-4 right-4 bg-white p-2 rounded-full flex items-center space-x-2 z-10">
           <button 
             className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm"
             onClick={() => setZoom(z => Math.min(3, z + 0.1))}
@@ -213,7 +194,7 @@ const Canvas = () => {
         </div>
         
         <button 
-          className="absolute bottom-4 left-4 bg-white bg-opacity-70 p-2 rounded-full flex items-center justify-center z-10"
+          className="absolute bottom-4 left-4 bg-white p-2 rounded-full flex items-center justify-center z-10"
           onClick={resetZoomAndPosition}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

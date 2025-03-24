@@ -10,7 +10,7 @@ import {
 } from '@/utils/canvasOperations';
 import { toast } from '@/components/ui/use-toast';
 
-// Funzione per creare una canvas vuota
+// Create empty canvas
 const createEmptyCanvas = () => {
   const canvas = new Array(CANVAS_SIZE);
   for (let i = 0; i < CANVAS_SIZE; i++) {
@@ -30,13 +30,13 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
   const [nickname, setNickname] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Funzione per resettare il cooldown
+  // Reset cooldown
   const resetCooldown = useCallback(() => {
     setCooldown(5);
     setCanPlace(false);
   }, []);
 
-  // Recupera le informazioni di un pixel
+  // Get pixel info
   const getPixelInfo = useCallback(async (x: number, y: number): Promise<PixelData | null> => {
     const colorInCanvas = canvas[y]?.[x];
     if (!colorInCanvas || colorInCanvas === DEFAULT_COLOR) {
@@ -46,7 +46,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     return await fetchPixelInfo(x, y);
   }, [canvas]);
 
-  // Carica i pixel inizialmente
+  // Load pixels initially
   useEffect(() => {
     let isMounted = true;
     
@@ -69,7 +69,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
           setCanvas(newCanvas);
         }
       } catch (error) {
-        console.error("Errore durante il caricamento iniziale dei pixel:", error);
+        console.error("Error loading pixels:", error);
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -79,14 +79,17 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     
     loadPixels();
     
-    // Sottoscrizione agli aggiornamenti
+    // Subscribe to updates
     const subscription = subscribeToPixelUpdates((newPixel) => {
       if (isMounted && typeof newPixel.x === 'number' && typeof newPixel.y === 'number') {
-        // Aggiornamento diretto
+        // Direct update
         setCanvas(prev => {
           const newCanvas = [...prev];
-          newCanvas[newPixel.y] = [...newCanvas[newPixel.y]];
-          newCanvas[newPixel.y][newPixel.x] = newPixel.color;
+          if (newPixel.y >= 0 && newPixel.y < newCanvas.length && 
+              newPixel.x >= 0 && newPixel.x < (newCanvas[newPixel.y]?.length || 0)) {
+            newCanvas[newPixel.y] = [...newCanvas[newPixel.y]];
+            newCanvas[newPixel.y][newPixel.x] = newPixel.color;
+          }
           return newCanvas;
         });
       }
@@ -98,18 +101,13 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Posiziona un pixel
+  // Place pixel
   const setPixel = useCallback(async (x: number, y: number) => {
     if (!canPlace) {
-      toast({
-        title: "Cooldown attivo",
-        description: "Devi aspettare prima di posizionare un altro pixel",
-        variant: "default",
-      });
       return;
     }
     
-    // Aggiornamento UI immediato
+    // Immediate UI update
     setCanvas((prevCanvas) => {
       const newCanvas = [...prevCanvas];
       newCanvas[y] = [...newCanvas[y]];
@@ -117,23 +115,17 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       return newCanvas;
     });
     
-    // Avvia cooldown
+    // Start cooldown
     resetCooldown();
     
-    // Invia in background
-    try {
-      await placePixel(x, y, selectedColor, nickname || null);
-    } catch (error) {
-      console.error("Errore nel posizionare il pixel:", error);
-      toast({
-        title: "Errore",
-        description: "Non è stato possibile posizionare il pixel.",
-        variant: "destructive",
+    // Send in background
+    placePixel(x, y, selectedColor, nickname || null)
+      .catch(error => {
+        console.error("Error placing pixel:", error);
       });
-    }
   }, [canPlace, selectedColor, nickname, resetCooldown]);
 
-  // Effetto per il cooldown
+  // Cooldown effect
   useEffect(() => {
     if (cooldown > 0) {
       const timer = setTimeout(() => {
@@ -145,7 +137,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     }
   }, [cooldown, canPlace]);
 
-  // Valore del contesto
+  // Context value
   const contextValue = useMemo(() => ({
     canvas,
     selectedColor,
@@ -178,8 +170,8 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       {isLoading ? (
         <div className="fixed inset-0 flex items-center justify-center bg-white bg-opacity-80 z-50">
           <div className="text-center">
-            <div className="w-16 h-16 border-t-4 border-blue-500 border-solid rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-lg font-medium">Caricamento in corso...</p>
+            <div className="w-12 h-12 border-t-4 border-blue-500 border-solid rounded-full animate-spin mx-auto mb-2"></div>
+            <p className="font-medium">Caricamento...</p>
           </div>
         </div>
       ) : children}

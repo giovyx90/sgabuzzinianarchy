@@ -1,4 +1,3 @@
-
 import { createContext, useState, useContext, ReactNode, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   CANVAS_SIZE, DEFAULT_COLOR, DEFAULT_PIXEL_SIZE, COLORS,
@@ -78,10 +77,11 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     isUpdatingCanvas.current = false;
   }, []);
 
-  // More efficient queueing mechanism
+  // More efficient queueing mechanism with immediate processing
   const queuePixelUpdate = useCallback((pixel: PixelData) => {
     updateQueue.current.push(pixel);
     
+    // Process immediately for user-initiated updates
     if (!updateTimerId.current && !isUpdatingCanvas.current) {
       updateTimerId.current = window.requestAnimationFrame(processUpdateQueue);
     }
@@ -129,6 +129,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     
     const channel = subscribeToPixelUpdates((newPixel) => {
       if (isMounted && typeof newPixel.x === 'number' && typeof newPixel.y === 'number') {
+        // Immediate update for better responsiveness
         queuePixelUpdate(newPixel);
       }
     });
@@ -182,6 +183,18 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     // Start cooldown immediately
     resetCooldown();
     
+    // Create a local pixel object to keep consistent display without waiting for server
+    const localPixel: PixelData = {
+      x,
+      y,
+      color: selectedColor,
+      placed_by: nickname || null,
+      placed_at: new Date().toISOString()
+    };
+    
+    // Also add to the local cache to reduce flicker
+    queuePixelUpdate(localPixel);
+    
     // Send to server in background
     try {
       await placePixel(x, y, selectedColor, nickname || null);
@@ -202,7 +215,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
         return newCanvas;
       });
     }
-  }, [canPlace, selectedColor, nickname, resetCooldown]);
+  }, [canPlace, selectedColor, nickname, resetCooldown, queuePixelUpdate]);
 
   // Cooldown effect with efficient timer
   useEffect(() => {

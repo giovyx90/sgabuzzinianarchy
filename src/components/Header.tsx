@@ -21,8 +21,11 @@ const Header = () => {
     <header className={`fixed top-0 left-0 right-0 z-10 transition-all duration-300 ${isScrolled ? 'glass-panel py-2 shadow-md' : 'bg-transparent py-4'}`}>
       <div className="container mx-auto px-4 flex justify-between items-center">
         <div className="flex items-center">
-          <img src="/logo.png" alt="SgabuzziniAnarchy Logo" className="w-8 h-8 rounded-md mr-3 shadow-md" />
-          <h1 className="text-xl font-medium tracking-tight">SgabuzziniAnarchy</h1>
+          <img 
+            src="/lovable-uploads/73734ad6-5d27-4a83-be6f-2ee40ef7b519.png" 
+            alt="SgabuzziniAnarchy Logo" 
+            className="h-8 mr-2" 
+          />
         </div>
         
         <div className="flex items-center space-x-4">

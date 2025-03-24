@@ -1,26 +1,26 @@
 
 import { PixelData, CANVAS_SIZE } from '@/types/canvas';
+import { supabase } from '@/integrations/supabase/client';
 
 // Reduced TTL cache
 const pixelCache = new Map<string, PixelData>();
 const CACHE_TTL = 2000; // 2 seconds
 
-// LocalStorage key
-const CANVAS_STORAGE_KEY = 'pixel-canvas-data';
-
-// Load pixels from localStorage
+// Fetch all pixels from Supabase
 export const fetchAllPixels = async () => {
   try {
-    const storedData = localStorage.getItem(CANVAS_STORAGE_KEY);
-    let pixelData: PixelData[] = [];
+    const { data, error } = await supabase
+      .from('pixels')
+      .select('*');
     
-    if (storedData) {
-      pixelData = JSON.parse(storedData);
+    if (error) {
+      console.error('Error fetching pixels:', error);
+      return [];
     }
     
     // Update cache
     const now = Date.now();
-    pixelData.forEach((pixel: PixelData) => {
+    data.forEach((pixel: PixelData) => {
       const key = `${pixel.x}-${pixel.y}`;
       pixelCache.set(key, {
         ...pixel,
@@ -28,8 +28,9 @@ export const fetchAllPixels = async () => {
       });
     });
     
-    return pixelData;
+    return data;
   } catch (e) {
+    console.error('Error in fetchAllPixels:', e);
     return [];
   }
 };
@@ -44,23 +45,29 @@ export const getPixelInfo = async (x: number, y: number): Promise<PixelData | nu
   }
   
   try {
-    const storedData = localStorage.getItem(CANVAS_STORAGE_KEY);
+    const { data, error } = await supabase
+      .from('pixels')
+      .select('*')
+      .eq('x', x)
+      .eq('y', y)
+      .maybeSingle();
     
-    if (storedData) {
-      const pixelData: PixelData[] = JSON.parse(storedData);
-      const pixel = pixelData.find(p => p.x === x && p.y === y);
-      
-      if (pixel) {
-        pixelCache.set(cacheKey, {
-          ...pixel,
-          timestamp: Date.now(),
-        });
-        return pixel;
-      }
+    if (error) {
+      console.error('Error fetching pixel info:', error);
+      return null;
+    }
+    
+    if (data) {
+      pixelCache.set(cacheKey, {
+        ...data,
+        timestamp: Date.now(),
+      });
+      return data;
     }
     
     return null;
   } catch (e) {
+    console.error('Error in getPixelInfo:', e);
     return null;
   }
 };
@@ -87,23 +94,38 @@ export const placePixel = async (x: number, y: number, color: string, nickname: 
       timestamp: Date.now(),
     });
     
-    // Load existing data
-    const storedData = localStorage.getItem(CANVAS_STORAGE_KEY);
-    let existingPixels: PixelData[] = [];
+    // Check if pixel exists at this position
+    const { data: existingPixel } = await supabase
+      .from('pixels')
+      .select('*')
+      .eq('x', x)
+      .eq('y', y)
+      .maybeSingle();
     
-    if (storedData) {
-      existingPixels = JSON.parse(storedData);
-      // Remove existing pixel at the same position
-      existingPixels = existingPixels.filter(p => !(p.x === x && p.y === y));
+    let result;
+    
+    if (existingPixel) {
+      // Update existing pixel
+      result = await supabase
+        .from('pixels')
+        .update({
+          color,
+          placed_by: nickname || 'Anonimo',
+          placed_at: new Date().toISOString()
+        })
+        .eq('x', x)
+        .eq('y', y);
+    } else {
+      // Insert new pixel
+      result = await supabase
+        .from('pixels')
+        .insert(pixelData);
     }
     
-    // Add new pixel
-    existingPixels.push(pixelData);
-    
-    // Save to localStorage without awaiting
-    setTimeout(() => {
-      localStorage.setItem(CANVAS_STORAGE_KEY, JSON.stringify(existingPixels));
-    }, 0);
+    if (result.error) {
+      console.error('Error placing pixel:', result.error);
+      return false;
+    }
     
     // Notify listeners immediately
     if (pixelUpdateListeners.length > 0) {
@@ -112,7 +134,41 @@ export const placePixel = async (x: number, y: number, color: string, nickname: 
     
     return true;
   } catch (e) {
+    console.error('Error in placePixel:', e);
     return false;
+  }
+};
+
+// Set up real-time subscriptions
+let realtimeSubscription: any = null;
+
+export const setupRealtimeUpdates = () => {
+  if (realtimeSubscription) return;
+  
+  realtimeSubscription = supabase
+    .channel('schema-db-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'pixels'
+      },
+      (payload) => {
+        const pixelData = payload.new as PixelData;
+        if (pixelUpdateListeners.length > 0) {
+          pixelUpdateListeners.forEach(listener => listener(pixelData));
+        }
+      }
+    )
+    .subscribe();
+};
+
+// Cleanup function for realtime subscription
+export const cleanupRealtimeUpdates = () => {
+  if (realtimeSubscription) {
+    supabase.removeChannel(realtimeSubscription);
+    realtimeSubscription = null;
   }
 };
 
@@ -123,11 +179,19 @@ const pixelUpdateListeners: ((pixel: PixelData) => void)[] = [];
 export const subscribeToPixelUpdates = (onPixelUpdate: (pixel: PixelData) => void) => {
   pixelUpdateListeners.push(onPixelUpdate);
   
+  // Setup realtime updates if not already set up
+  setupRealtimeUpdates();
+  
   return {
     unsubscribe: () => {
       const index = pixelUpdateListeners.indexOf(onPixelUpdate);
       if (index !== -1) {
         pixelUpdateListeners.splice(index, 1);
+      }
+      
+      // If no more listeners, cleanup the realtime subscription
+      if (pixelUpdateListeners.length === 0) {
+        cleanupRealtimeUpdates();
       }
     }
   };

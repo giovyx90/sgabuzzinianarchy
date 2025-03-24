@@ -1,4 +1,3 @@
-
 import { createContext, useState, useContext, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { 
   CANVAS_SIZE, DEFAULT_COLOR, DEFAULT_PIXEL_SIZE, COLORS,
@@ -6,7 +5,7 @@ import {
 } from '@/types/canvas';
 import { 
   fetchAllPixels, getPixelInfo as fetchPixelInfo, 
-  placePixel, subscribeToPixelUpdates 
+  placePixel, subscribeToPixelUpdates, setupRealtimeUpdates, cleanupRealtimeUpdates
 } from '@/utils/canvasOperations';
 import { toast } from '@/components/ui/use-toast';
 
@@ -79,6 +78,9 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     
     loadPixels();
     
+    // Set up realtime updates
+    setupRealtimeUpdates();
+    
     // Subscribe to updates
     const subscription = subscribeToPixelUpdates((newPixel) => {
       if (isMounted && typeof newPixel.x === 'number' && typeof newPixel.y === 'number') {
@@ -98,6 +100,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
       subscription.unsubscribe();
+      cleanupRealtimeUpdates();
     };
   }, []);
 

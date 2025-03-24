@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -61,6 +62,25 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
+				},
+				// Canvas palette colors
+				canvas: {
+					'red': '#FF4136',
+					'orange': '#FF851B',
+					'yellow': '#FFDC00',
+					'lime': '#7FDB6A',
+					'green': '#2ECC40',
+					'teal': '#39CCCC',
+					'blue': '#0074D9',
+					'navy': '#001F3F',
+					'purple': '#B10DC9',
+					'magenta': '#F012BE',
+					'pink': '#FF80CC',
+					'maroon': '#85144b',
+					'brown': '#A52A2A',
+					'black': '#111111',
+					'gray': '#AAAAAA',
+					'white': '#FFFFFF',
 				}
 			},
 			borderRadius: {
@@ -84,11 +104,72 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'fade-in': {
+					'0%': {
+						opacity: '0',
+						transform: 'translateY(10px)'
+					},
+					'100%': {
+						opacity: '1',
+						transform: 'translateY(0)'
+					}
+				},
+				'scale-in': {
+					'0%': {
+						opacity: '0',
+						transform: 'scale(0.95)'
+					},
+					'100%': {
+						opacity: '1',
+						transform: 'scale(1)'
+					}
+				},
+				'pop': {
+					'0%': {
+						transform: 'scale(0.95)',
+						opacity: '0'
+					},
+					'40%': {
+						transform: 'scale(1.02)',
+						opacity: '1'
+					},
+					'100%': {
+						transform: 'scale(1)',
+						opacity: '1'
+					}
+				},
+				'pixel-place': {
+					'0%': {
+						transform: 'scale(1)',
+						opacity: '0.5'
+					},
+					'50%': {
+						transform: 'scale(1.5)',
+						opacity: '0.8'
+					},
+					'100%': {
+						transform: 'scale(1)',
+						opacity: '1'
+					}
+				},
+				'pulse-subtle': {
+					'0%, 100%': {
+						opacity: '1'
+					},
+					'50%': {
+						opacity: '0.7'
+					}
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'fade-in': 'fade-in 0.3s ease-out',
+				'scale-in': 'scale-in 0.2s ease-out',
+				'pop': 'pop 0.3s ease-out',
+				'pixel-place': 'pixel-place 0.3s ease-out',
+				'pulse-subtle': 'pulse-subtle 2s ease-in-out infinite'
 			}
 		}
 	},

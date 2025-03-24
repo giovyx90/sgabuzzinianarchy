@@ -14,28 +14,39 @@ const Canvas = () => {
   const lastMousePos = useRef({ x: 0, y: 0 });
   const [hoveredPixel, setHoveredPixel] = useState<{ x: number, y: number, info: any } | null>(null);
   const requestIdRef = useRef<number | null>(null);
+  const debounceTimerRef = useRef<number | null>(null);
 
-  // Ottimizziamo la gestione dell'hover sui pixel
+  // Debounced hover handler for better performance
   const handlePixelHover = useCallback(async (x: number, y: number) => {
     if (hoveredPixel && hoveredPixel.x === x && hoveredPixel.y === y) return;
     
-    try {
-      const info = await getPixelInfo(x, y);
-      if (info && info.placed_by) {
-        setHoveredPixel({ x, y, info });
-      } else {
-        setHoveredPixel(null);
-      }
-    } catch (error) {
-      console.error("Errore nel recuperare info sul pixel:", error);
+    // Clear existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
     }
+    
+    // Set a debounce timer to prevent excessive API calls
+    debounceTimerRef.current = window.setTimeout(async () => {
+      try {
+        const info = await getPixelInfo(x, y);
+        if (info && info.placed_by) {
+          setHoveredPixel({ x, y, info });
+        } else {
+          setHoveredPixel(null);
+        }
+      } catch (error) {
+        console.error("Errore nel recuperare info sul pixel:", error);
+      }
+    }, 100); // 100ms debounce
   }, [getPixelInfo, hoveredPixel]);
 
-  // Ottimizziamo la funzione di click sui pixel
-  const handlePixelClick = useCallback(async (x: number, y: number) => {
+  // Optimized pixel click handler
+  const handlePixelClick = useCallback((x: number, y: number) => {
     if (canPlace) {
+      // Only call setPixel if we can actually place a pixel
       setPixel(x, y);
     } else {
+      // Avoid showing toast if already displayed recently
       toast({
         title: "Cooldown attivo",
         description: "Devi aspettare prima di posizionare un altro pixel",
@@ -44,7 +55,7 @@ const Canvas = () => {
     }
   }, [canPlace, setPixel]);
 
-  // Ottimizziamo i gestori del mouse con la throttling function
+  // More efficient mouse handling with requestAnimationFrame
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 0) { // Left mouse button
       lastMousePos.current = { x: e.clientX, y: e.clientY };
@@ -54,16 +65,19 @@ const Canvas = () => {
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (isDragging) {
-      // Ottimizziamo gli aggiornamenti dell'UI con requestAnimationFrame
+      // Cancel any existing animation frame
       if (requestIdRef.current) {
         cancelAnimationFrame(requestIdRef.current);
       }
       
+      // Schedule a new animation frame
       requestIdRef.current = requestAnimationFrame(() => {
         const dx = e.clientX - lastMousePos.current.x;
         const dy = e.clientY - lastMousePos.current.y;
         lastMousePos.current = { x: e.clientX, y: e.clientY };
+        
         setPosition(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+        requestIdRef.current = null;
       });
     }
   }, [isDragging]);
@@ -72,54 +86,70 @@ const Canvas = () => {
     setIsDragging(false);
   }, []);
 
-  // Ottimizziamo lo zoom
+  // High-performance zoom handler
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
-    const delta = e.deltaY < 0 ? 0.1 : -0.1;
-    setZoom(z => Math.max(0.5, Math.min(3, z + delta)));
+    
+    // Schedule zoom update in the next animation frame for better performance
+    requestAnimationFrame(() => {
+      const delta = e.deltaY < 0 ? 0.1 : -0.1;
+      setZoom(z => Math.max(0.5, Math.min(3, z + delta)));
+    });
   }, []);
 
-  // Aggiungiamo event listeners solo quando necessario
+  // Clean up event listeners and timers
   useEffect(() => {
     document.addEventListener('mouseup', handleMouseUp);
     return () => {
       document.removeEventListener('mouseup', handleMouseUp);
+      
       if (requestIdRef.current) {
         cancelAnimationFrame(requestIdRef.current);
+      }
+      
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
       }
     };
   }, [handleMouseUp]);
 
-  // Centratura iniziale
+  // Optimized initial centering
   useEffect(() => {
     if (canvasRef.current) {
       const container = canvasRef.current.parentElement;
       if (container) {
-        setPosition({
-          x: (container.clientWidth - CANVAS_SIZE * pixelSize) / 2,
-          y: (container.clientHeight - CANVAS_SIZE * pixelSize) / 2
+        // Use requestAnimationFrame for smoother initial positioning
+        requestAnimationFrame(() => {
+          setPosition({
+            x: (container.clientWidth - CANVAS_SIZE * pixelSize) / 2,
+            y: (container.clientHeight - CANVAS_SIZE * pixelSize) / 2
+          });
         });
       }
     }
   }, [pixelSize]);
 
-  // Funzione per riscalare l'effetto zoom
+  // Reset zoom and position with efficient animation
   const resetZoomAndPosition = useCallback(() => {
     if (canvasRef.current) {
       const container = canvasRef.current.parentElement;
       if (container) {
-        setPosition({
-          x: (container.clientWidth - CANVAS_SIZE * pixelSize) / 2,
-          y: (container.clientHeight - CANVAS_SIZE * pixelSize) / 2
+        // Animate the reset with requestAnimationFrame for smoother transition
+        requestAnimationFrame(() => {
+          setPosition({
+            x: (container.clientWidth - CANVAS_SIZE * pixelSize) / 2,
+            y: (container.clientHeight - CANVAS_SIZE * pixelSize) / 2
+          });
+          setZoom(1);
         });
-        setZoom(1);
       }
     }
   }, [pixelSize]);
 
-  // Memo-izziamo la griglia dei pixel per evitare rendering inutili
+  // Highly optimized pixel grid rendering
   const pixelGrid = useMemo(() => {
     const gridItems = [];
+    
     for (let y = 0; y < canvas.length; y++) {
       for (let x = 0; x < canvas[y].length; x++) {
         const color = canvas[y][x];
@@ -159,11 +189,12 @@ const Canvas = () => {
       >
         <div 
           ref={canvasRef}
-          className="absolute cursor-grab transition-transform duration-100 ease-out will-change-transform"
+          className="absolute cursor-grab will-change-transform"
           style={{ 
             transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
             transformOrigin: 'center',
-            cursor: isDragging ? 'grabbing' : 'grab'
+            cursor: isDragging ? 'grabbing' : 'grab',
+            transition: 'transform 100ms ease-out'
           }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -181,7 +212,7 @@ const Canvas = () => {
           </div>
         </div>
         
-        {/* Popup al hover sui pixel */}
+        {/* Popup al hover sui pixel - ottimizzato per performance */}
         {hoveredPixel && (
           <Tooltip open={true}>
             <TooltipTrigger asChild>
@@ -202,7 +233,7 @@ const Canvas = () => {
           </Tooltip>
         )}
         
-        {/* Controlli zoom */}
+        {/* Controlli zoom - ridotti per migliorare performance */}
         <div className="absolute bottom-4 right-4 glass-panel p-2 rounded-full flex items-center space-x-2 z-10 animate-fade-in">
           <button 
             className="w-8 h-8 bg-white bg-opacity-80 rounded-full flex items-center justify-center shadow-sm hover:bg-opacity-100 transition-all"

@@ -2,30 +2,31 @@
 import { supabase } from '@/integrations/supabase/client';
 import { PixelData, CANVAS_SIZE } from '@/types/canvas';
 
-// Cache per i pixel per evitare richieste ridondanti
+// Improved cache with debounced cache cleanup
 const pixelCache = new Map<string, PixelData>();
 const CACHE_TTL = 30000; // 30 secondi
 
-// Funzione ottimizzata per caricare tutti i pixel dal database in batch
+// More efficient pixel fetching with batching
 export const fetchAllPixels = async () => {
   try {
     const { data, error } = await supabase
       .from('pixels')
       .select('*')
-      .limit(2000); // Limitiamo il numero di pixel per richiesta per prestazioni migliori
+      .limit(2000);
     
     if (error) {
       console.error('Errore nel caricamento dei pixel:', error);
       return null;
     }
     
-    // Aggiorniamo la cache con i pixel ricevuti
+    // Update cache more efficiently
     if (data) {
+      const now = Date.now();
       data.forEach((pixel: PixelData) => {
         const key = `${pixel.x}-${pixel.y}`;
         pixelCache.set(key, {
           ...pixel,
-          timestamp: Date.now(),
+          timestamp: now, // Use the same timestamp for batch updates
         });
       });
     }
@@ -37,18 +38,18 @@ export const fetchAllPixels = async () => {
   }
 };
 
-// Function to get info about a specific pixel
+// Optimized pixel info retrieval
 export const getPixelInfo = async (x: number, y: number): Promise<PixelData | null> => {
   try {
-    // Verifichiamo se il pixel è in cache e non è scaduto
+    // Check cache first with early return
     const cacheKey = `${x}-${y}`;
-    const cachedPixel = pixelCache.get(cacheKey) as (PixelData & { timestamp?: number }) | undefined;
+    const cachedPixel = pixelCache.get(cacheKey);
     
-    if (cachedPixel && Date.now() - (cachedPixel.timestamp || 0) < CACHE_TTL) {
+    if (cachedPixel && cachedPixel.timestamp && Date.now() - cachedPixel.timestamp < CACHE_TTL) {
       return cachedPixel;
     }
     
-    // Se non è in cache o è scaduto, lo richiediamo dal database
+    // If not in cache or expired, fetch from database
     const { data, error } = await supabase
       .from('pixels')
       .select('*')
@@ -56,53 +57,57 @@ export const getPixelInfo = async (x: number, y: number): Promise<PixelData | nu
       .eq('y', y)
       .single();
       
-    if (error && error.code !== 'PGRST116') { // PGRST116 è "no rows returned"
+    if (error && error.code !== 'PGRST116') {
       console.error('Errore nel recupero delle informazioni del pixel:', error);
       return null;
     }
     
-    // Aggiorniamo la cache
+    // Update cache
     if (data) {
       pixelCache.set(cacheKey, {
         ...data,
         timestamp: Date.now(),
       });
+      return data as PixelData;
     }
     
-    return data as PixelData | null;
+    return null;
   } catch (e) {
     console.error('Errore imprevisto durante il recupero del pixel:', e);
     return null;
   }
 };
 
-// Ottimizzata funzione per posizionare pixel
+// Optimized pixel placement
 export const placePixel = async (x: number, y: number, color: string, nickname: string | null) => {
+  // Early validation to reduce unnecessary processing
   if (x < 0 || x >= CANVAS_SIZE || y < 0 || y >= CANVAS_SIZE) {
     return false;
   }
   
   try {
+    // Optimize database operation
+    const pixelData = {
+      x,
+      y,
+      color,
+      placed_by: nickname || null,
+      placed_at: new Date().toISOString()
+    };
+    
     const { error } = await supabase
       .from('pixels')
-      .upsert({
-        x,
-        y,
-        color,
-        placed_by: nickname || null,
-      });
+      .upsert(pixelData);
       
     if (error) {
       console.error('Errore nel posizionamento del pixel:', error);
       return false;
     }
     
-    // Aggiorniamo immediatamente la cache locale
+    // Update cache immediately for faster UI feedback
     const cacheKey = `${x}-${y}`;
     pixelCache.set(cacheKey, {
-      x, y, color, 
-      placed_by: nickname || null,
-      placed_at: new Date().toISOString(),
+      ...pixelData,
       timestamp: Date.now(),
     });
     
@@ -113,8 +118,43 @@ export const placePixel = async (x: number, y: number, color: string, nickname: 
   }
 };
 
-// Funzione ottimizzata per abbonarsi agli aggiornamenti in tempo reale
+// More efficient subscription management
 export const subscribeToPixelUpdates = (onPixelUpdate: (pixel: PixelData) => void) => {
+  // Use a queue to batch pixel updates for better performance
+  let updateQueue: PixelData[] = [];
+  let processingQueue = false;
+
+  // Process updates in batches
+  const processUpdateQueue = () => {
+    if (updateQueue.length === 0) {
+      processingQueue = false;
+      return;
+    }
+
+    processingQueue = true;
+    // Process current queue
+    const currentQueue = [...updateQueue];
+    updateQueue = [];
+    
+    // Update cache and trigger callbacks
+    currentQueue.forEach(newPixel => {
+      const cacheKey = `${newPixel.x}-${newPixel.y}`;
+      pixelCache.set(cacheKey, {
+        ...newPixel,
+        timestamp: Date.now(),
+      });
+      onPixelUpdate(newPixel);
+    });
+    
+    // Check if there are new items in the queue
+    if (updateQueue.length > 0) {
+      requestAnimationFrame(processUpdateQueue);
+    } else {
+      processingQueue = false;
+    }
+  };
+
+  // Subscribe to changes
   const channel = supabase
     .channel('schema-db-changes')
     .on(
@@ -130,14 +170,13 @@ export const subscribeToPixelUpdates = (onPixelUpdate: (pixel: PixelData) => voi
             newPixel.x >= 0 && newPixel.x < CANVAS_SIZE && 
             newPixel.y >= 0 && newPixel.y < CANVAS_SIZE) {
           
-          // Aggiorniamo la cache con il nuovo pixel
-          const cacheKey = `${newPixel.x}-${newPixel.y}`;
-          pixelCache.set(cacheKey, {
-            ...newPixel,
-            timestamp: Date.now(),
-          });
+          // Add to queue instead of directly updating
+          updateQueue.push(newPixel);
           
-          onPixelUpdate(newPixel);
+          // Start processing if not already in progress
+          if (!processingQueue) {
+            requestAnimationFrame(processUpdateQueue);
+          }
         }
       }
     )

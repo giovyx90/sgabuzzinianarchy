@@ -1,6 +1,6 @@
 
 // Define the canvas size and initial pixel size
-export const CANVAS_SIZE = 200; // 200x200 pixels
+export const CANVAS_SIZE = 128; // Ridotto da 200 a 128 pixels
 export const DEFAULT_PIXEL_SIZE = 3;
 export const DEFAULT_COLOR = '#FFFFFF';
 

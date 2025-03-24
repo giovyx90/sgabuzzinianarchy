@@ -3,6 +3,7 @@ import { useRef, useEffect, useState, useCallback, memo, useMemo } from 'react';
 import { useCanvas } from '../context/CanvasContext';
 import { CANVAS_SIZE } from '@/types/canvas';
 import { toast } from '@/components/ui/use-toast';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const Canvas = () => {
   const { canvas, setPixel, pixelSize, canPlace, getPixelInfo } = useCanvas();
@@ -11,8 +12,24 @@ const Canvas = () => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const lastMousePos = useRef({ x: 0, y: 0 });
-  const [pixelInfo, setPixelInfo] = useState<any>(null);
-  const [infoPosition, setInfoPosition] = useState({ x: 0, y: 0 });
+  const [hoveredPixel, setHoveredPixel] = useState<{ x: number, y: number, info: any } | null>(null);
+  const requestIdRef = useRef<number | null>(null);
+
+  // Ottimizziamo la gestione dell'hover sui pixel
+  const handlePixelHover = useCallback(async (x: number, y: number) => {
+    if (hoveredPixel && hoveredPixel.x === x && hoveredPixel.y === y) return;
+    
+    try {
+      const info = await getPixelInfo(x, y);
+      if (info && info.placed_by) {
+        setHoveredPixel({ x, y, info });
+      } else {
+        setHoveredPixel(null);
+      }
+    } catch (error) {
+      console.error("Errore nel recuperare info sul pixel:", error);
+    }
+  }, [getPixelInfo, hoveredPixel]);
 
   // Ottimizziamo la funzione di click sui pixel
   const handlePixelClick = useCallback(async (x: number, y: number) => {
@@ -25,23 +42,9 @@ const Canvas = () => {
         variant: "default",
       });
     }
-    
-    // Ottieni informazioni sul pixel
-    try {
-      const info = await getPixelInfo(x, y);
-      if (info) {
-        setPixelInfo(info);
-        setInfoPosition({ x, y });
-        
-        // Nascondi le informazioni dopo 3 secondi
-        setTimeout(() => setPixelInfo(null), 3000);
-      }
-    } catch (error) {
-      console.error("Errore nel recuperare info sul pixel:", error);
-    }
-  }, [canPlace, setPixel, getPixelInfo]);
+  }, [canPlace, setPixel]);
 
-  // Ottimizziamo i gestori del mouse
+  // Ottimizziamo i gestori del mouse con la throttling function
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 0) { // Left mouse button
       lastMousePos.current = { x: e.clientX, y: e.clientY };
@@ -51,10 +54,17 @@ const Canvas = () => {
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (isDragging) {
-      const dx = e.clientX - lastMousePos.current.x;
-      const dy = e.clientY - lastMousePos.current.y;
-      lastMousePos.current = { x: e.clientX, y: e.clientY };
-      setPosition(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+      // Ottimizziamo gli aggiornamenti dell'UI con requestAnimationFrame
+      if (requestIdRef.current) {
+        cancelAnimationFrame(requestIdRef.current);
+      }
+      
+      requestIdRef.current = requestAnimationFrame(() => {
+        const dx = e.clientX - lastMousePos.current.x;
+        const dy = e.clientY - lastMousePos.current.y;
+        lastMousePos.current = { x: e.clientX, y: e.clientY };
+        setPosition(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+      });
     }
   }, [isDragging]);
 
@@ -74,6 +84,9 @@ const Canvas = () => {
     document.addEventListener('mouseup', handleMouseUp);
     return () => {
       document.removeEventListener('mouseup', handleMouseUp);
+      if (requestIdRef.current) {
+        cancelAnimationFrame(requestIdRef.current);
+      }
     };
   }, [handleMouseUp]);
 
@@ -104,102 +117,122 @@ const Canvas = () => {
     }
   }, [pixelSize]);
 
-  // Memoizziamo la griglia dei pixel per evitare rendering inutili
+  // Memo-izziamo la griglia dei pixel per evitare rendering inutili
   const pixelGrid = useMemo(() => {
-    return canvas.map((row, y) =>
-      row.map((color, x) => (
-        <div
-          key={`${x}-${y}`}
-          className="pixel relative"
-          style={{
-            backgroundColor: color,
-            width: `${pixelSize}px`,
-            height: `${pixelSize}px`,
-          }}
-          onClick={() => handlePixelClick(x, y)}
-        >
-          <div 
-            className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${canPlace ? 'opacity-0' : 'opacity-40'}`}
-            style={{ backgroundColor: "#000000" }}
-          />
-        </div>
-      ))
-    );
-  }, [canvas, pixelSize, canPlace, handlePixelClick]);
+    const gridItems = [];
+    for (let y = 0; y < canvas.length; y++) {
+      for (let x = 0; x < canvas[y].length; x++) {
+        const color = canvas[y][x];
+        
+        gridItems.push(
+          <div
+            key={`${x}-${y}`}
+            className="pixel relative"
+            style={{
+              backgroundColor: color,
+              width: `${pixelSize}px`,
+              height: `${pixelSize}px`,
+              gridRow: y + 1,
+              gridColumn: x + 1,
+            }}
+            onClick={() => handlePixelClick(x, y)}
+            onMouseEnter={() => handlePixelHover(x, y)}
+            onMouseLeave={() => setHoveredPixel(null)}
+          >
+            <div 
+              className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${canPlace ? 'opacity-0' : 'opacity-40'}`}
+              style={{ backgroundColor: "#000000" }}
+            />
+          </div>
+        );
+      }
+    }
+    
+    return gridItems;
+  }, [canvas, pixelSize, canPlace, handlePixelClick, handlePixelHover]);
 
   return (
-    <div 
-      className="relative overflow-hidden w-full h-full bg-secondary rounded-lg shadow-inner"
-      onWheel={handleWheel}
-    >
+    <TooltipProvider>
       <div 
-        ref={canvasRef}
-        className="absolute cursor-grab transition-transform duration-100 ease-out will-change-transform"
-        style={{ 
-          transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
-          transformOrigin: 'center',
-          cursor: isDragging ? 'grabbing' : 'grab'
-        }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
+        className="relative overflow-hidden w-full h-full bg-secondary rounded-lg shadow-inner select-none"
+        onWheel={handleWheel}
       >
         <div 
-          className="grid gap-[1px] bg-muted p-1 rounded-md shadow-md animate-fade-in"
-          style={{
-            gridTemplateColumns: `repeat(${CANVAS_SIZE}, ${pixelSize}px)`,
-            width: `${CANVAS_SIZE * pixelSize + CANVAS_SIZE}px`,
-            height: `${CANVAS_SIZE * pixelSize + CANVAS_SIZE}px`,
+          ref={canvasRef}
+          className="absolute cursor-grab transition-transform duration-100 ease-out will-change-transform"
+          style={{ 
+            transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
+            transformOrigin: 'center',
+            cursor: isDragging ? 'grabbing' : 'grab'
           }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
         >
-          {pixelGrid}
+          <div 
+            className="grid gap-[1px] bg-muted p-1 rounded-md shadow-md animate-fade-in"
+            style={{
+              gridTemplateColumns: `repeat(${CANVAS_SIZE}, ${pixelSize}px)`,
+              gridTemplateRows: `repeat(${CANVAS_SIZE}, ${pixelSize}px)`,
+              width: `${CANVAS_SIZE * pixelSize + CANVAS_SIZE + 2}px`,
+              height: `${CANVAS_SIZE * pixelSize + CANVAS_SIZE + 2}px`,
+            }}
+          >
+            {pixelGrid}
+          </div>
         </div>
-      </div>
-      
-      {/* Informazioni sul pixel */}
-      {pixelInfo && (
-        <div 
-          className="absolute z-20 bg-white p-2 rounded-md shadow-lg text-xs"
-          style={{
-            left: `${infoPosition.x * pixelSize * zoom + position.x}px`,
-            top: `${infoPosition.y * pixelSize * zoom + position.y - 40}px`,
-          }}
-        >
-          <p><strong>Coordinate:</strong> {pixelInfo.x}, {pixelInfo.y}</p>
-          {pixelInfo.placed_by && <p><strong>Autore:</strong> {pixelInfo.placed_by}</p>}
-          <p><strong>Posizionato:</strong> {new Date(pixelInfo.placed_at).toLocaleString('it-IT')}</p>
+        
+        {/* Popup al hover sui pixel */}
+        {hoveredPixel && (
+          <Tooltip open={true}>
+            <TooltipTrigger asChild>
+              <div className="hidden" />
+            </TooltipTrigger>
+            <TooltipContent 
+              className="z-50 bg-white p-2 rounded-md shadow-lg text-xs"
+              style={{
+                position: 'absolute',
+                left: `${hoveredPixel.x * pixelSize * zoom + position.x}px`,
+                top: `${hoveredPixel.y * pixelSize * zoom + position.y - 40}px`,
+              }}
+            >
+              <p><strong>Coordinate:</strong> {hoveredPixel.info.x}, {hoveredPixel.info.y}</p>
+              {hoveredPixel.info.placed_by && <p><strong>Autore:</strong> {hoveredPixel.info.placed_by}</p>}
+              <p><strong>Posizionato:</strong> {new Date(hoveredPixel.info.placed_at).toLocaleString('it-IT')}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        
+        {/* Controlli zoom */}
+        <div className="absolute bottom-4 right-4 glass-panel p-2 rounded-full flex items-center space-x-2 z-10 animate-fade-in">
+          <button 
+            className="w-8 h-8 bg-white bg-opacity-80 rounded-full flex items-center justify-center shadow-sm hover:bg-opacity-100 transition-all"
+            onClick={() => setZoom(z => Math.min(3, z + 0.1))}
+          >
+            <span className="text-xl font-bold">+</span>
+          </button>
+          <div className="text-sm font-medium">{Math.round(zoom * 100)}%</div>
+          <button 
+            className="w-8 h-8 bg-white bg-opacity-80 rounded-full flex items-center justify-center shadow-sm hover:bg-opacity-100 transition-all"
+            onClick={() => setZoom(z => Math.max(0.5, z - 0.1))}
+          >
+            <span className="text-xl font-bold">-</span>
+          </button>
         </div>
-      )}
-      
-      {/* Controlli zoom */}
-      <div className="absolute bottom-4 right-4 glass-panel p-2 rounded-full flex items-center space-x-2 z-10 animate-fade-in">
+        
+        {/* Pulsante centratura */}
         <button 
-          className="w-8 h-8 bg-white bg-opacity-80 rounded-full flex items-center justify-center shadow-sm hover:bg-opacity-100 transition-all"
-          onClick={() => setZoom(z => Math.min(3, z + 0.1))}
+          className="absolute bottom-4 left-4 glass-panel p-2 rounded-full flex items-center justify-center z-10 animate-fade-in hover:bg-opacity-80 transition-all"
+          onClick={resetZoomAndPosition}
         >
-          <span className="text-xl font-bold">+</span>
-        </button>
-        <div className="text-sm font-medium">{Math.round(zoom * 100)}%</div>
-        <button 
-          className="w-8 h-8 bg-white bg-opacity-80 rounded-full flex items-center justify-center shadow-sm hover:bg-opacity-100 transition-all"
-          onClick={() => setZoom(z => Math.max(0.5, z - 0.1))}
-        >
-          <span className="text-xl font-bold">-</span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 3H3v18h18V3z"></path>
+            <path d="M21 3v18H3"></path>
+            <path d="M12 8v8"></path>
+            <path d="M8 12h8"></path>
+          </svg>
         </button>
       </div>
-      
-      {/* Pulsante centratura */}
-      <button 
-        className="absolute bottom-4 left-4 glass-panel p-2 rounded-full flex items-center justify-center z-10 animate-fade-in hover:bg-opacity-80 transition-all"
-        onClick={resetZoomAndPosition}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 3H3v18h18V3z"></path>
-          <path d="M21 3v18H3"></path>
-          <path d="M12 8v8"></path>
-          <path d="M8 12h8"></path>
-        </svg>
-      </button>
-    </div>
+    </TooltipProvider>
   );
 };
 

@@ -1,5 +1,4 @@
-
-import { createContext, useState, useContext, ReactNode, useEffect, useCallback, useMemo } from 'react';
+import { createContext, useState, useContext, ReactNode, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   CANVAS_SIZE, DEFAULT_COLOR, DEFAULT_PIXEL_SIZE, COLORS,
   CanvasContextType, PixelData 
@@ -11,7 +10,6 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 
-// Crea un canvas vuoto come valore predefinito
 const createEmptyCanvas = () => Array(CANVAS_SIZE)
   .fill(null)
   .map(() => Array(CANVAS_SIZE).fill(DEFAULT_COLOR));
@@ -19,7 +17,6 @@ const createEmptyCanvas = () => Array(CANVAS_SIZE)
 const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
 
 export function CanvasProvider({ children }: { children: ReactNode }) {
-  // Utilizziamo useMemo per l'inizializzazione costosa del canvas
   const defaultCanvas = useMemo(() => createEmptyCanvas(), []);
   const [canvas, setCanvas] = useState<string[][]>(defaultCanvas);
   const [selectedColor, setSelectedColor] = useState<string>(COLORS[0]);
@@ -29,12 +26,10 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
   const [nickname, setNickname] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   
-  // Ottimizzazione: memorizziamo l'ultima volta che abbiamo aggiornato un pixel
   const lastUpdateTime = useRef<number>(Date.now());
   const updateQueue = useRef<PixelData[]>([]);
   const updateTimerId = useRef<number | null>(null);
 
-  // Batch updates per migliorare le prestazioni
   const processUpdateQueue = useCallback(() => {
     if (updateQueue.current.length === 0) {
       updateTimerId.current = null;
@@ -58,7 +53,6 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     updateTimerId.current = null;
   }, []);
 
-  // Funzione per aggiungere un pixel alla coda di aggiornamento
   const queuePixelUpdate = useCallback((pixel: PixelData) => {
     updateQueue.current.push(pixel);
     
@@ -67,7 +61,6 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     }
   }, [processUpdateQueue]);
 
-  // Carica i pixel dal database all'avvio in modo ottimizzato
   useEffect(() => {
     const loadInitialPixels = async () => {
       setIsLoading(true);
@@ -76,7 +69,6 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
         const pixels = await fetchAllPixels();
         
         if (pixels && pixels.length > 0) {
-          // Utilizziamo un approccio più efficiente per aggiornare il canvas
           setCanvas(prevCanvas => {
             const newCanvas = prevCanvas.map(row => [...row]);
             
@@ -104,7 +96,6 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     
     loadInitialPixels();
     
-    // Sottoscrizione ottimizzata per aggiornamenti in tempo reale
     const channel = subscribeToPixelUpdates((newPixel) => {
       if (typeof newPixel.x === 'number' && typeof newPixel.y === 'number') {
         queuePixelUpdate(newPixel);
@@ -119,12 +110,10 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     };
   }, [queuePixelUpdate]);
 
-  // Gestore delle informazioni sui pixel
   const getPixelInfo = useCallback(async (x: number, y: number): Promise<PixelData | null> => {
     return await fetchPixelInfo(x, y);
   }, []);
 
-  // Timer per il cooldown
   useEffect(() => {
     if (cooldown > 0) {
       const timer = setTimeout(() => {
@@ -136,7 +125,6 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     }
   }, [cooldown, canPlace]);
 
-  // Funzione ottimizzata per posizionare un pixel
   const setPixel = useCallback(async (x: number, y: number) => {
     if (!canPlace) {
       toast({
@@ -151,7 +139,6 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       const success = await placePixel(x, y, selectedColor, nickname || null);
       
       if (success) {
-        // Aggiorna lo stato locale immediatamente per una risposta più veloce
         setCanvas((prevCanvas) => {
           const newCanvas = [...prevCanvas];
           newCanvas[y] = [...newCanvas[y]];
@@ -171,13 +158,11 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     }
   }, [canPlace, selectedColor, nickname]);
 
-  // Reset cooldown after placing a pixel
   const resetCooldown = useCallback(() => {
-    setCooldown(5); // 5 seconds cooldown
+    setCooldown(5);
     setCanPlace(false);
   }, []);
 
-  // Memoizziamo il valore del contesto per evitare rendering inutili
   const contextValue = useMemo(() => ({
     canvas,
     selectedColor,
@@ -217,7 +202,6 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// Custom hook to use the Canvas context
 export function useCanvas() {
   const context = useContext(CanvasContext);
   if (context === undefined) {
@@ -226,5 +210,4 @@ export function useCanvas() {
   return context;
 }
 
-// Export constants for use in other components
 export { COLORS, CANVAS_SIZE };

@@ -11,6 +11,7 @@ export interface PixelData {
   color: string;
   placed_by?: string | null;
   placed_at?: string | null;
+  timestamp?: number; // Added timestamp for cache management
 }
 
 // Define the context type
@@ -43,4 +44,3 @@ export const COLORS = [
   '#F012BE', // Magenta
   '#FFFFFF', // Bianco
 ];
-

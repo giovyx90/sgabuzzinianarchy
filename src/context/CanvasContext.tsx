@@ -154,17 +154,11 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     return await fetchPixelInfo(x, y);
   }, [canvas]);
 
-  // Cooldown effect with efficient timer
-  useEffect(() => {
-    if (cooldown > 0) {
-      const timer = setTimeout(() => {
-        setCooldown(prev => prev - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
-    } else if (cooldown === 0 && !canPlace) {
-      setCanPlace(true);
-    }
-  }, [cooldown, canPlace]);
+  // Define resetCooldown before it's used in setPixel
+  const resetCooldown = useCallback(() => {
+    setCooldown(5);
+    setCanPlace(false);
+  }, []);
 
   // Optimized pixel placement with immediate UI feedback
   const setPixel = useCallback(async (x: number, y: number) => {
@@ -210,10 +204,17 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     }
   }, [canPlace, selectedColor, nickname, resetCooldown]);
 
-  const resetCooldown = useCallback(() => {
-    setCooldown(5);
-    setCanPlace(false);
-  }, []);
+  // Cooldown effect with efficient timer
+  useEffect(() => {
+    if (cooldown > 0) {
+      const timer = setTimeout(() => {
+        setCooldown(prev => prev - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (cooldown === 0 && !canPlace) {
+      setCanPlace(true);
+    }
+  }, [cooldown, canPlace]);
 
   // Memoized context value to prevent unnecessary re-renders
   const contextValue = useMemo(() => ({

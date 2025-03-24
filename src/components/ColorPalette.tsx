@@ -1,11 +1,14 @@
 
 import { COLORS, useCanvas } from '../context/CanvasContext';
 import { useState, useEffect } from 'react';
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const ColorPalette = () => {
-  const { selectedColor, setSelectedColor, cooldown, canPlace } = useCanvas();
+  const { selectedColor, setSelectedColor, cooldown, canPlace, nickname, setNickname } = useCanvas();
   const [isExpanded, setIsExpanded] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [inputNickname, setInputNickname] = useState('');
 
   // Check if mobile and set the initial state
   useEffect(() => {
@@ -27,6 +30,21 @@ const ColorPalette = () => {
       setIsExpanded(false);
     }
   }, [isMobile]);
+
+  // Carica il nickname salvato
+  useEffect(() => {
+    const savedNickname = localStorage.getItem('sgabuzziniAnarchyNickname');
+    if (savedNickname) {
+      setInputNickname(savedNickname);
+      setNickname(savedNickname);
+    }
+  }, [setNickname]);
+
+  // Gestisci il salvataggio del nickname
+  const handleNicknameSave = () => {
+    setNickname(inputNickname);
+    localStorage.setItem('sgabuzziniAnarchyNickname', inputNickname);
+  };
 
   return (
     <div 
@@ -58,24 +76,44 @@ const ColorPalette = () => {
       </button>
 
       <div className="p-4">
-        <h2 className="text-md font-medium text-center mb-3">Color Palette</h2>
+        <h2 className="text-md font-medium text-center mb-3">Tavolozza Colori</h2>
         
-        <div className={`grid ${isMobile ? 'grid-cols-8' : 'grid-cols-4'} gap-2 mb-4`}>
+        <div className={`grid ${isMobile ? 'grid-cols-5' : 'grid-cols-5'} gap-2 mb-4`}>
           {COLORS.map((color) => (
             <button
               key={color}
               className={`palette-color w-8 h-8 rounded-md transition-all duration-200 ${selectedColor === color ? 'active ring-2 ring-primary' : ''}`}
               style={{ backgroundColor: color }}
               onClick={() => setSelectedColor(color)}
-              aria-label={`Select ${color} color`}
+              aria-label={`Seleziona colore ${color}`}
             />
           ))}
+        </div>
+        
+        {/* Nickname input */}
+        <div className="mb-4">
+          <Label htmlFor="nickname" className="text-sm font-medium mb-1">Il tuo nickname (opzionale)</Label>
+          <div className="flex space-x-2">
+            <Input 
+              id="nickname" 
+              value={inputNickname} 
+              onChange={(e) => setInputNickname(e.target.value)} 
+              placeholder="Inserisci nickname"
+              className="text-sm"
+            />
+            <button 
+              onClick={handleNicknameSave}
+              className="bg-primary text-white px-2 py-1 rounded-md text-sm hover:bg-primary/90 transition-colors"
+            >
+              Salva
+            </button>
+          </div>
         </div>
         
         {/* Cooldown timer */}
         <div className="flex flex-col items-center">
           <div className="text-sm font-medium text-center mb-1">
-            {canPlace ? 'Ready to place' : `Cooldown: ${cooldown}s`}
+            {canPlace ? 'Pronto per posizionare' : `Cooldown: ${cooldown}s`}
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
             <div 

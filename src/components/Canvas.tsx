@@ -1,19 +1,32 @@
 
 import { useRef, useEffect, useState } from 'react';
 import { useCanvas, CANVAS_SIZE } from '../context/CanvasContext';
+import { toast } from '@/components/ui/use-toast';
 
 const Canvas = () => {
-  const { canvas, setPixel, pixelSize, canPlace } = useCanvas();
+  const { canvas, setPixel, pixelSize, canPlace, getPixelInfo } = useCanvas();
   const canvasRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const lastMousePos = useRef({ x: 0, y: 0 });
+  const [pixelInfo, setPixelInfo] = useState<any>(null);
+  const [infoPosition, setInfoPosition] = useState({ x: 0, y: 0 });
 
   // Handle pixel click
-  const handlePixelClick = (x: number, y: number) => {
+  const handlePixelClick = async (x: number, y: number) => {
     if (canPlace) {
       setPixel(x, y);
+    }
+    
+    // Ottieni informazioni sul pixel
+    const info = await getPixelInfo(x, y);
+    if (info) {
+      setPixelInfo(info);
+      setInfoPosition({ x, y });
+      
+      // Nascondi le informazioni dopo 3 secondi
+      setTimeout(() => setPixelInfo(null), 3000);
     }
   };
 
@@ -54,6 +67,17 @@ const Canvas = () => {
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, []);
+
+  // Mostra un messaggio quando non si può posizionare un pixel
+  useEffect(() => {
+    if (!canPlace) {
+      toast({
+        title: "Cooldown attivo",
+        description: "Devi aspettare prima di posizionare un altro pixel",
+        variant: "default",
+      });
+    }
+  }, [canPlace]);
 
   return (
     <div 
@@ -100,6 +124,21 @@ const Canvas = () => {
           )}
         </div>
       </div>
+      
+      {/* Informazioni sul pixel */}
+      {pixelInfo && (
+        <div 
+          className="absolute z-20 bg-white p-2 rounded-md shadow-lg text-xs"
+          style={{
+            left: `${infoPosition.x * pixelSize * zoom + position.x}px`,
+            top: `${infoPosition.y * pixelSize * zoom + position.y - 40}px`,
+          }}
+        >
+          <p><strong>Coordinate:</strong> {pixelInfo.x}, {pixelInfo.y}</p>
+          {pixelInfo.placed_by && <p><strong>Autore:</strong> {pixelInfo.placed_by}</p>}
+          <p><strong>Posizionato:</strong> {new Date(pixelInfo.placed_at).toLocaleString('it-IT')}</p>
+        </div>
+      )}
       
       {/* Zoom controls */}
       <div className="absolute bottom-4 right-4 glass-panel p-2 rounded-full flex items-center space-x-2 z-10 animate-fade-in">

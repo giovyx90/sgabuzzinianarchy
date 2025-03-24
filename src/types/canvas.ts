@@ -41,4 +41,5 @@ export const COLORS = [
   '#001F3F', // Navy
   '#B10DC9', // Viola
   '#F012BE', // Magenta
+  '#FFFFFF', // Bianco
 ];

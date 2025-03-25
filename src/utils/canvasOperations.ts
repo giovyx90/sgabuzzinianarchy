@@ -79,13 +79,18 @@ export const placePixel = async (x: number, y: number, color: string, nickname: 
   }
   
   try {
-    const pixelData = {
+    // Only include placed_by field if a nickname is provided
+    const pixelData: any = {
       x,
       y,
       color,
-      placed_by: nickname || 'Anonimo',
       placed_at: new Date().toISOString()
     };
+    
+    // Only add the placed_by field if a nickname was provided
+    if (nickname) {
+      pixelData.placed_by = nickname;
+    }
     
     // Update cache
     const cacheKey = `${x}-${y}`;
@@ -108,11 +113,7 @@ export const placePixel = async (x: number, y: number, color: string, nickname: 
       // Update existing pixel
       result = await supabase
         .from('pixels')
-        .update({
-          color,
-          placed_by: nickname || 'Anonimo',
-          placed_at: new Date().toISOString()
-        })
+        .update(pixelData)
         .eq('x', x)
         .eq('y', y);
     } else {

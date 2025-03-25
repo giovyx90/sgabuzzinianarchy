@@ -4,6 +4,7 @@ import { COLORS } from '@/types/canvas';
 import { useState, useEffect } from 'react';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "@/components/ui/use-toast";
 
 const ColorPalette = () => {
   const { selectedColor, setSelectedColor, cooldown, canPlace, nickname, setNickname } = useCanvas();
@@ -43,8 +44,22 @@ const ColorPalette = () => {
 
   // Gestisci il salvataggio del nickname
   const handleNicknameSave = () => {
-    setNickname(inputNickname);
-    localStorage.setItem('sgabuzziniAnarchyNickname', inputNickname);
+    if (inputNickname.trim()) {
+      setNickname(inputNickname.trim());
+      localStorage.setItem('sgabuzziniAnarchyNickname', inputNickname.trim());
+      toast({
+        title: "Nickname salvato",
+        description: "I tuoi pixel saranno registrati nella classifica.",
+      });
+    } else {
+      setNickname('');
+      localStorage.removeItem('sgabuzziniAnarchyNickname');
+      toast({
+        title: "Nickname rimosso",
+        description: "I tuoi pixel non saranno registrati nella classifica.",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
@@ -93,7 +108,7 @@ const ColorPalette = () => {
         
         {/* Nickname input */}
         <div className="mb-4">
-          <Label htmlFor="nickname" className="text-sm font-medium mb-1">Il tuo nickname (opzionale)</Label>
+          <Label htmlFor="nickname" className="text-sm font-medium mb-1">Il tuo nickname</Label>
           <div className="flex space-x-2">
             <Input 
               id="nickname" 
@@ -109,6 +124,9 @@ const ColorPalette = () => {
               Salva
             </button>
           </div>
+          <p className="text-xs text-gray-500 mt-1">
+            {nickname ? "I tuoi pixel saranno registrati nella classifica." : "Inserisci un nickname per comparire in classifica."}
+          </p>
         </div>
         
         {/* Cooldown timer */}

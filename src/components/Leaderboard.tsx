@@ -51,10 +51,11 @@ const Leaderboard = () => {
       const oneDayAgoStr = oneDayAgo.toISOString();
       const oneWeekAgoStr = oneWeekAgo.toISOString();
       
-      // Fetch all time leaderboard
+      // Fetch all time leaderboard - Only include users who have a placed_by value
       const { data: allTimeData, error: allTimeError } = await supabase
         .from('pixels')
         .select('placed_by, placed_at')
+        .not('placed_by', 'is', null)
         .order('placed_at', { ascending: false });
         
       if (allTimeError) {
@@ -63,10 +64,11 @@ const Leaderboard = () => {
         return;
       }
       
-      // Fetch daily leaderboard
+      // Fetch daily leaderboard - Only include users who have a placed_by value
       const { data: dailyData, error: dailyError } = await supabase
         .from('pixels')
         .select('placed_by, placed_at')
+        .not('placed_by', 'is', null)
         .gte('placed_at', oneDayAgoStr)
         .order('placed_at', { ascending: false });
         
@@ -74,10 +76,11 @@ const Leaderboard = () => {
         console.error("Error fetching daily leaderboard:", dailyError);
       }
       
-      // Fetch weekly leaderboard
+      // Fetch weekly leaderboard - Only include users who have a placed_by value
       const { data: weeklyData, error: weeklyError } = await supabase
         .from('pixels')
         .select('placed_by, placed_at')
+        .not('placed_by', 'is', null)
         .gte('placed_at', oneWeekAgoStr)
         .order('placed_at', { ascending: false });
         
@@ -92,7 +95,7 @@ const Leaderboard = () => {
         if (!data) return [];
         
         data.forEach(pixel => {
-          const username = pixel.placed_by || 'Anonimo';
+          const username = pixel.placed_by;
           
           if (!counter[username]) {
             counter[username] = { count: 0 };
@@ -166,6 +169,10 @@ const Leaderboard = () => {
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">Classifica Pixel Piazzati</DialogTitle>
         </DialogHeader>
+        
+        <p className="text-sm text-gray-500 mb-2">
+          Solo gli utenti che hanno inserito un nickname compaiono in classifica.
+        </p>
         
         <Tabs defaultValue="all" value={activeTab} onValueChange={(value) => setActiveTab(value as TimeFrame)}>
           <TabsList className="grid grid-cols-3 mb-4">

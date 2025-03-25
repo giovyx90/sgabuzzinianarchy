@@ -3,6 +3,8 @@ import { useRef, useEffect, useState, useCallback, memo } from 'react';
 import { useCanvas } from '../context/CanvasContext';
 import { CANVAS_SIZE } from '@/types/canvas';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Move } from 'lucide-react';
 
 const Canvas = () => {
   const { canvas, setPixel, pixelSize, canPlace, getPixelInfo } = useCanvas();
@@ -12,7 +14,8 @@ const Canvas = () => {
   const [zoom, setZoom] = useState(1);
   const lastMousePos = useRef({ x: 0, y: 0 });
   const [hoveredPixel, setHoveredPixel] = useState<{ x: number, y: number, info: any } | null>(null);
-
+  const isMobile = useIsMobile();
+  
   // Pixel hover handler
   const handlePixelHover = useCallback(async (x: number, y: number) => {
     if (!canvas[y]?.[x] || canvas[y][x] === '#FFFFFF') return;
@@ -42,6 +45,15 @@ const Canvas = () => {
     }
   }, []);
 
+  // Touch handling for mobile
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      lastMousePos.current = { x: touch.clientX, y: touch.clientY };
+      setIsDragging(true);
+    }
+  }, []);
+
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (isDragging) {
       const dx = e.clientX - lastMousePos.current.x;
@@ -52,7 +64,24 @@ const Canvas = () => {
     }
   }, [isDragging]);
 
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (isDragging && e.touches.length === 1) {
+      e.preventDefault(); // Prevent default scrolling
+      const touch = e.touches[0];
+      
+      const dx = touch.clientX - lastMousePos.current.x;
+      const dy = touch.clientY - lastMousePos.current.y;
+      lastMousePos.current = { x: touch.clientX, y: touch.clientY };
+      
+      setPosition(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+    }
+  }, [isDragging]);
+
   const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
     setIsDragging(false);
   }, []);
 
@@ -63,13 +92,47 @@ const Canvas = () => {
     setZoom(z => Math.max(0.5, Math.min(3, z + delta)));
   }, []);
 
+  // Pinch-to-zoom for mobile
+  const touchDistance = useRef<number | null>(null);
+  
+  const handleTouchZoomStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      // Calculate initial distance between two fingers
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      touchDistance.current = Math.sqrt(dx * dx + dy * dy);
+    }
+  }, []);
+
+  const handleTouchZoomMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2 && touchDistance.current !== null) {
+      // Calculate new distance
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const newDistance = Math.sqrt(dx * dx + dy * dy);
+      
+      // Calculate zoom change
+      const delta = (newDistance - touchDistance.current) * 0.01;
+      touchDistance.current = newDistance;
+      
+      setZoom(z => Math.max(0.5, Math.min(3, z + delta)));
+    }
+  }, []);
+
+  const handleTouchZoomEnd = useCallback(() => {
+    touchDistance.current = null;
+  }, []);
+
   // Event listeners
   useEffect(() => {
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchend', handleTouchEnd);
+    
     return () => {
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [handleMouseUp]);
+  }, [handleMouseUp, handleTouchEnd]);
 
   // Initial centering
   useEffect(() => {
@@ -133,9 +196,17 @@ const Canvas = () => {
         className="relative overflow-hidden w-full h-full bg-secondary rounded-lg shadow-inner select-none"
         onWheel={handleWheel}
       >
+        {/* Mobile drag indicator */}
+        {isMobile && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-black/30 text-white px-3 py-1.5 rounded-full flex items-center space-x-1.5 animate-pulse-subtle pointer-events-none">
+            <Move size={14} />
+            <span className="text-xs font-medium">Trascina per muoverti</span>
+          </div>
+        )}
+        
         <div 
           ref={canvasRef}
-          className="absolute cursor-grab"
+          className="absolute cursor-grab touch-pan-y touch-pan-x"
           style={{ 
             transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
             transformOrigin: 'center',
@@ -143,6 +214,9 @@ const Canvas = () => {
           }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         >
           <div 
             className="grid gap-[1px] bg-muted p-1 rounded-md shadow-md"
@@ -152,6 +226,9 @@ const Canvas = () => {
               width: `${CANVAS_SIZE * pixelSize + CANVAS_SIZE + 2}px`,
               height: `${CANVAS_SIZE * pixelSize + CANVAS_SIZE + 2}px`,
             }}
+            onTouchStart={handleTouchZoomStart}
+            onTouchMove={handleTouchZoomMove}
+            onTouchEnd={handleTouchZoomEnd}
           >
             {renderPixels()}
           </div>
@@ -176,8 +253,8 @@ const Canvas = () => {
           </Tooltip>
         )}
         
-        {/* Simple controls */}
-        <div className="absolute bottom-4 right-4 bg-white p-2 rounded-full flex items-center space-x-2 z-10">
+        {/* Controls - adjusted for mobile */}
+        <div className={`absolute ${isMobile ? 'bottom-4 right-4' : 'bottom-4 right-4'} bg-white p-2 rounded-full flex items-center space-x-2 z-10`}>
           <button 
             className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm"
             onClick={() => setZoom(z => Math.min(3, z + 0.1))}
